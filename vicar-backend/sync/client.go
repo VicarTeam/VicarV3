@@ -97,13 +97,16 @@ func (c *syncClient) handlePacket(packet map[string]any) {
 
 		hasAccess := false
 		if c.typ == clientTypeVicar && c.user != nil {
-			var count int64
-			if err := db.DB.Raw("SELECT 1 FROM v5_character_viewers WHERE v5_character_id = ? AND user_id = ? LIMIT 1", charID, c.user.ID).Count(&count).Error; err != nil {
-				log.Error(log.Sync, "❌", "Database error checking character access: %v", err)
-				return
-			}
-			if count > 0 {
+			var char entities.V5Character
+			err := db.DB.Where("id = ?", charID).First(&char).Error
+			if err == nil && char.UserID == c.user.ID {
 				hasAccess = true
+			} else {
+				var count int64
+				err = db.DB.Raw("SELECT 1 FROM v5_character_viewers WHERE v5_character_id = ? AND user_id = ? LIMIT 1", charID, c.user.ID).Count(&count).Error
+				if err == nil && count > 0 {
+					hasAccess = true
+				}
 			}
 		}
 
