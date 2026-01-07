@@ -1,10 +1,10 @@
 ﻿import axios from "axios";
 import {getSession, setSession} from "./session.ts";
-import {useMainStore} from "@/store/main.ts";
+import {useMainStore} from "@/stores/main.ts";
 
 /**
  * A time in milliseconds which will be subtracted from the session's expiration time to determine if the session is expired.
- * It is used to prevent the session from expiring while the user is still using the application, so this offset should be.
+ * It is used to prevent the session from expiring while the user is still using the application.
  */
 const EXPIRE_THRESHOLD = 10_000;
 

@@ -1,18 +1,4 @@
-﻿<template>
-  <component
-    :is="as"
-    class="card"
-    :class="[
-      tight && 'card--tight',
-      elevated && 'card--elevated',
-      interactive && 'card--interactive'
-    ]"
-  >
-    <slot />
-  </component>
-</template>
-
-<script setup lang="ts">
+﻿<script setup lang="ts">
 type AsTag = keyof HTMLElementTagNameMap
 
 withDefaults(
@@ -30,6 +16,20 @@ withDefaults(
   }
 )
 </script>
+
+<template>
+  <component
+    :is="as"
+    class="card"
+    :class="[
+      tight && 'card--tight',
+      elevated && 'card--elevated',
+      interactive && 'card--interactive'
+    ]"
+  >
+    <slot />
+  </component>
+</template>
 
 <style scoped lang="scss">
 .card--elevated {

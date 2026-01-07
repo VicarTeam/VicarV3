@@ -15,7 +15,7 @@ export function transformFileType(filename: string): 'image' | 'video' | 'audio'
   if (parts.length < 2) {
     return "file";
   }
-  const ext = parts[parts.length - 1].toLowerCase();
+  const ext = parts[parts.length - 1]!.toLowerCase();
   switch (ext) {
     case "png":
     case "jpg":

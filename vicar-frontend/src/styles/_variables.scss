@@ -1,0 +1,61 @@
+﻿@use "sass:color";
+
+$font-body: "Inter", system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+$font-head: "Cinzel", ui-serif, Georgia, "Times New Roman", serif;
+
+$s-1: 0.25rem;
+$s-2: 0.5rem;
+$s-3: 0.75rem;
+$s-4: 1rem;
+$s-5: 1.25rem;
+$s-6: 1.5rem;
+$s-7: 2rem;
+$s-8: 3rem;
+
+$r-sm: 10px;
+$r-md: 14px;
+$r-lg: 20px;
+
+$t-fast: 120ms;
+$t-med: 220ms;
+$t-slow: 420ms;
+$ease: cubic-bezier(.2,.8,.2,1);
+
+$container: 1120px;
+
+$bg-0: #07060a;
+$bg-1: #0b0710;
+$bg-2: #120a17;
+
+$text-0: rgba(255,255,255,.92);
+$text-1: rgba(255,255,255,.72);
+$text-2: rgba(255,255,255,.54);
+
+$red-0: #ff3b54;
+$red-1: #d1152c;
+$red-2: #8c0c1b;
+
+$border: rgba(255,255,255,.10);
+$border-strong: rgba(255,255,255,.16);
+
+$shadow-1: 0 10px 30px rgba(0,0,0,.45);
+$shadow-2: 0 18px 60px rgba(0,0,0,.55);
+
+$focus-ring: color.adjust($red-0, $alpha: -0.55);
+
+$grad-bg:
+    radial-gradient(1200px 800px at 15% 10%, rgba(255,59,84,.18), transparent 55%),
+    radial-gradient(900px 700px at 80% 20%, rgba(209,21,44,.14), transparent 60%),
+    radial-gradient(1000px 900px at 35% 90%, rgba(140,12,27,.12), transparent 60%),
+    linear-gradient(180deg, $bg-0, $bg-1 40%, $bg-0);
+
+$grad-accent:
+    linear-gradient(135deg, rgba(255,59,84,.95), rgba(209,21,44,.8) 55%, rgba(140,12,27,.65));
+
+$grad-card:
+    linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.02));
+
+$fs-0: clamp(0.95rem, 0.25vw + 0.9rem, 1.0rem);
+$fs-1: clamp(1.1rem, 0.5vw + 1.0rem, 1.25rem);
+$fs-2: clamp(1.4rem, 1.1vw + 1.1rem, 1.9rem);
+$fs-3: clamp(1.9rem, 2.0vw + 1.2rem, 2.8rem);

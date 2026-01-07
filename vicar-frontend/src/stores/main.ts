@@ -1,14 +1,11 @@
 ﻿import {defineStore} from "pinia";
-import {Role, User} from "../@types/user.ts";
+import type {User} from "../@types/user.ts";
 import {getBrowserName} from "@/utils/browser.ts";
-import {getUser, getUserGroups} from "@/rest/api/users.ts";
-import {FullGroup, Group} from "@/@types/group.ts";
+import {getUser} from "@/rest/api/users.ts";
 
 export const useMainStore = defineStore('main', {
   state: () => ({
     user: null as unknown as User,
-    groups: [] as Group[],
-    userOptionsVisible: false as boolean,
     deviceName: null as string|null,
   }),
   actions: {
@@ -16,12 +13,7 @@ export const useMainStore = defineStore('main', {
       const user = await getUser();
       this.user = user as unknown as User;
 
-      if (!user) {
-        return false;
-      }
-
-      this.groups = await getUserGroups();
-      return true;
+      return user;
     },
     async getDeviceName(): Promise<string> {
       if (this.deviceName) {
@@ -42,28 +34,10 @@ export const useMainStore = defineStore('main', {
         return getBrowserName();
       }
     },
-    hasRole(role: Role): boolean {
-      if (this.hasAdmin) {
-        return true;
-      }
-      return this.user.role >= role;
-    },
-    hasRoleForGroup(role: Role, group: FullGroup): boolean {
-      if (this.hasAdmin) {
-        return true;
-      }
-      if (this.user.role >= role) {
-        return true;
-      }
-      return group.members.some((member) => member.role >= role && member.id === this.user.id);
-    }
   },
   getters: {
-    hasRoot(): boolean {
-      return this.user.isRoot;
-    },
-    hasAdmin(): boolean {
-      return this.hasRoot || this.user.isAdmin;
+    hasTeam(): boolean {
+      return this.user.isTeam;
     }
   }
 });

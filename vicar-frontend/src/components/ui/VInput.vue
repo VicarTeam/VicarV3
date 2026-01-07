@@ -1,43 +1,4 @@
-﻿<template>
-  <label v-if="label" class="field">
-    <span class="field__label">{{ label }}</span>
-
-    <input
-      v-bind="inputAttrs"
-      class="input"
-      :class="[
-        sizeClass,
-        invalid && 'input--invalid'
-      ]"
-      :value="model"
-      @input="onInput"
-      @blur="emit('blur', $event)"
-      @focus="emit('focus', $event)"
-    />
-
-    <span v-if="error" class="field__error">{{ error }}</span>
-    <span v-else-if="help" class="field__help">{{ help }}</span>
-  </label>
-
-  <div v-else class="field">
-    <input
-      v-bind="inputAttrs"
-      class="input"
-      :class="[
-        sizeClass,
-        invalid && 'input--invalid'
-      ]"
-      :value="model"
-      @input="onInput"
-      @blur="emit('blur', $event)"
-      @focus="emit('focus', $event)"
-    />
-    <span v-if="error" class="field__error">{{ error }}</span>
-    <span v-else-if="help" class="field__help">{{ help }}</span>
-  </div>
-</template>
-
-<script setup lang="ts">
+﻿<script setup lang="ts">
 import { computed, useAttrs } from "vue"
 
 type Size = "sm" | "md" | "lg"
@@ -91,6 +52,45 @@ function onInput(ev: Event) {
   }
 }
 </script>
+
+<template>
+  <label v-if="label" class="field">
+    <span class="field__label">{{ label }}</span>
+
+    <input
+      v-bind="inputAttrs"
+      class="input"
+      :class="[
+        sizeClass,
+        invalid && 'input--invalid'
+      ]"
+      :value="model"
+      @input="onInput"
+      @blur="emit('blur', $event)"
+      @focus="emit('focus', $event)"
+    />
+
+    <span v-if="error" class="field__error">{{ error }}</span>
+    <span v-else-if="help" class="field__help">{{ help }}</span>
+  </label>
+
+  <div v-else class="field">
+    <input
+      v-bind="inputAttrs"
+      class="input"
+      :class="[
+        sizeClass,
+        invalid && 'input--invalid'
+      ]"
+      :value="model"
+      @input="onInput"
+      @blur="emit('blur', $event)"
+      @focus="emit('focus', $event)"
+    />
+    <span v-if="error" class="field__error">{{ error }}</span>
+    <span v-else-if="help" class="field__help">{{ help }}</span>
+  </div>
+</template>
 
 <style scoped lang="scss">
 .field {

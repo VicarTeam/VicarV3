@@ -1,21 +1,15 @@
-﻿import {GET, POST, POST_AND_THROW, RestError, SuccessResponse} from "../index.ts";
+﻿import {POST, POST_AND_THROW, RestError, type SuccessResponse} from "@/rest";
 import {setSession} from "../session.ts";
 
-export function getStatus(): Promise<'CLAIMED'|'UNCLAIMED'|null> {
-  return GET<'CLAIMED'|'UNCLAIMED'>('/auth/status');
-}
-
-export async function register(username: string, email: string, password: string, reg_type: 'root_claim'|'invite', token: string): Promise<boolean> {
+export async function register(username: string, password: string): Promise<boolean> {
   const res = await POST<SuccessResponse>(`/auth/register`, {
-    username, email, password
-  }, {
-    reg_type, token
+    username, password
   });
 
   return !!res;
 }
 
-export async function login(username: string, password: string): Promise<boolean|{otp_missing: true, state: string}> {
+export async function login(username: string, password: string): Promise<'SUCCESS'|'USER_NOT_FOUND'|'INVALID_CREDS'|'ERROR'|{otp_missing: true, state: string}> {
   try {
     const res = await POST_AND_THROW<{token: string, expiresIn: number}>(`/auth/login`, {
       username, password
@@ -23,18 +17,22 @@ export async function login(username: string, password: string): Promise<boolean
 
     setSession(res.token, res.expiresIn);
 
-    return true;
+    return 'SUCCESS';
   } catch (e: any) {
     if (e instanceof RestError) {
       e = e as RestError<{state: string}>;
 
       if (e.status === 428) {
         return {otp_missing: true, state: e.data.state};
+      } else if (e.status === 404) {
+        return 'USER_NOT_FOUND';
+      } else if (e.status === 401) {
+        return 'INVALID_CREDS';
       }
     }
 
     console.error(e);
-    return false;
+    return 'ERROR';
   }
 }
 

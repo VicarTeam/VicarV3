@@ -11,7 +11,7 @@ type CreateCharacterDto struct {
 	Name          string      `json:"name"`
 	GenerationEra string      `json:"generationEra"`
 	Generation    int         `json:"generation"`
-	BookIDs       []uuid.UUID `json:"bookIds"`
+	BookIDs       []uuid.UUID `json:"books"`
 }
 
 func (dto *CreateCharacterDto) Validate() error {
@@ -78,11 +78,11 @@ type UpdateCharacterDto struct {
 	Willpower       *int           `json:"willpower"`
 	WillpowerDamage pq.StringArray `json:"willpowerDamage"`
 
-	UseAdvancedDisciplines       *bool   `json:"useAdvancedDisciplines"`
-	AllowLearningOfAllPowers     *bool   `json:"allowLearningOfAllPowers"`
-	FullCustomization            *bool   `json:"fullCustomization"`
-	SkillSpreadType              *string `json:"skillSpreadType"`
-	BookIDs                      []uuid.UUID `json:"bookIds"`
+	UseAdvancedDisciplines   *bool       `json:"useAdvancedDisciplines"`
+	AllowLearningOfAllPowers *bool       `json:"allowLearningOfAllPowers"`
+	FullCustomization        *bool       `json:"fullCustomization"`
+	SkillSpreadType          *string     `json:"skillSpreadType"`
+	BookIDs                  []uuid.UUID `json:"bookIds"`
 }
 
 func (dto *UpdateCharacterDto) Validate() error {

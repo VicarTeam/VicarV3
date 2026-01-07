@@ -113,12 +113,14 @@ function base64UrlToUint8Array(base64Url: string): ArrayBuffer {
     outputArray[i] = rawBinary.charCodeAt(i);
   }
 
+  // @ts-ignore
   return outputArray;
 }
 
 function uint8ArrayToBase64Url(uint8Array: Uint8Array): string {
   let binary = '';
   for (let i = 0; i < uint8Array.byteLength; i++) {
+    // @ts-ignore
     binary += String.fromCharCode(uint8Array[i]);
   }
 

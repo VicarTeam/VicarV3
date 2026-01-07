@@ -1,6 +1,8 @@
 ﻿package entities
 
 import (
+	"time"
+
 	"github.com/google/uuid"
 	"github.com/lib/pq"
 )
@@ -50,6 +52,8 @@ const (
 
 type V5Character struct {
 	BaseSheet   `gorm:"embedded"`
+	UpdatedAt   time.Time           `gorm:"type:timestamp;not null;default:current_timestamp"`
+	CreatedAt   time.Time           `gorm:"type:timestamp;not null;default:current_timestamp"`
 	DirectoryID *uuid.UUID          `gorm:"type:uuid;index"`
 	Directory   *CharacterDirectory `gorm:"foreignKey:DirectoryID;constraint:OnUpdate:CASCADE,OnDelete:SET NULL;"`
 

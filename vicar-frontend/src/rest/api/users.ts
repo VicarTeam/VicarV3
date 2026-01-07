@@ -1,7 +1,5 @@
-﻿import {Role, User} from "@/@types/user.ts";
-import {DELETE, GET, GET_PAGINATED, PaginationOptions, PaginationResult, PATCH, POST} from "@/rest";
-import {Group} from "@/@types/group.ts";
-import {Project} from "@/@types/project.ts";
+﻿import type {User} from "@/@types/user.ts";
+import {DELETE, GET, PATCH, POST} from "@/rest";
 
 export async function getUser(id: string = "@me", inAdminView: boolean = false): Promise<User|null> {
   return await GET<User>(`/users/${id}`, {view: inAdminView ? "admin" : undefined});
@@ -57,52 +55,7 @@ export async function setUserUsername(userId: string, username: string): Promise
   return !!res;
 }
 
-export async function setUserEmail(userId: string, email: string): Promise<boolean> {
-  const res = await PATCH(`/users/${userId}/email`, {email});
-  return !!res;
-}
-
 export async function setUserPassword(userId: string, password: string, oldPassword: string): Promise<boolean> {
   const res = await PATCH(`/users/${userId}/password`, {password, oldPassword});
   return !!res;
-}
-
-export async function setUserRole(userId: string, role: Role): Promise<boolean> {
-  const res = await PATCH(`/users/${userId}/role`, {role});
-  return !!res;
-}
-
-export async function makeUserAdmin(userId: string): Promise<boolean> {
-  const res = await POST(`/users/${userId}/admin`);
-  return !!res;
-}
-
-export async function removeUserAdmin(userId: string): Promise<boolean> {
-  const res = await DELETE(`/users/${userId}/admin`);
-  return !!res;
-}
-
-export async function blockUser(userId: string): Promise<boolean> {
-  const res = await POST(`/users/${userId}/block`);
-  return !!res;
-}
-
-export async function unblockUser(userId: string): Promise<boolean> {
-  const res = await DELETE(`/users/${userId}/block`);
-  return !!res;
-}
-
-export async function deleteUser(userId: string): Promise<boolean> {
-  const res = await DELETE(`/users/${userId}`);
-  return !!res;
-}
-
-export async function getUserGroups(): Promise<Group[]> {
-  return await GET<Group[]>(`/users/@me/groups`, {}, []);
-}
-
-export async function inviteUser(username: string, email: string): Promise<string|null> {
-  const res = await POST<{inviteCode: string}>("/users/invite", {username, email});
-  if (!res) return null;
-  return `${window.location.origin}/auth?t=${res.inviteCode}&u=${username}&e=${email}&y=reg`;
 }

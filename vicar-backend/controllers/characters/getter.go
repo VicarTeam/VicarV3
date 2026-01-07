@@ -23,7 +23,7 @@ func getCharacters(c *fiber.Ctx) error {
 		PreFilter("clanId", "clan_id = ?").
 		Preload("Clan").
 		Joins("LEFT JOIN v5_character_viewers ON v5_characters.id = v5_character_viewers.v5_character_id").
-		Where("user_id = ? OR v5_character_viewers.user_id = ?", user.ID, user.ID)
+		Where("v5_characters.user_id = ? OR v5_character_viewers.user_id = ?", user.ID, user.ID)
 
 	qb.Extract(c)
 

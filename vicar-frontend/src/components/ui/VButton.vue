@@ -1,27 +1,6 @@
-﻿<template>
-  <component
-    :is="as"
-    class="btn"
-    :class="[
-      `btn--${variant}`,
-      `btn--${size}`,
-      block && 'btn--block',
-      loading && 'btn--loading'
-    ]"
-    :type="isButtonTag ? nativeType : undefined"
-    :disabled="isButtonTag ? disabled || loading : undefined"
-    :aria-disabled="!isButtonTag ? String(disabled || loading) : undefined"
-    :tabindex="!isButtonTag && (disabled || loading) ? -1 : undefined"
-    @click="onClick"
-  >
-    <span v-if="loading" class="btn__spinner" aria-hidden="true" />
-    <span class="btn__content" :class="loading && 'btn__content--hidden'">
-      <slot />
-    </span>
-  </component>
-</template>
+﻿<script setup lang="ts">
+import {computed} from "vue";
 
-<script setup lang="ts">
 type Variant = "primary" | "secondary" | "ghost" | "danger"
 type Size = "sm" | "md" | "lg"
 type AsTag = "button" | "a" | "div" | "span"
@@ -62,6 +41,29 @@ function onClick(ev: MouseEvent) {
   emit("click", ev)
 }
 </script>
+
+<template>
+  <component
+    :is="as"
+    class="btn"
+    :class="[
+      `btn--${variant}`,
+      `btn--${size}`,
+      block && 'btn--block',
+      loading && 'btn--loading'
+    ]"
+    :type="isButtonTag ? nativeType : undefined"
+    :disabled="isButtonTag ? disabled || loading : undefined"
+    :aria-disabled="!isButtonTag ? String(disabled || loading) : undefined"
+    :tabindex="!isButtonTag && (disabled || loading) ? -1 : undefined"
+    @click="onClick"
+  >
+    <span v-if="loading" class="btn__spinner" aria-hidden="true" />
+    <span class="btn__content">
+      <slot />
+    </span>
+  </component>
+</template>
 
 <style scoped lang="scss">
 .btn {
