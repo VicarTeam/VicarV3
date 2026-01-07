@@ -1,0 +1,3 @@
+[submodule "vicar-backend/assets/VicarData"]
+	path = vicar-backend/assets/VicarData
+	url = git@github.com:VicarTeam/VicarData.git
