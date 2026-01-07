@@ -3,7 +3,7 @@ export type Resonance = 'choleric' | 'melancholic' | 'phlegmatic' | 'sanguine' |
 export type CategoryKey = 'physical' | 'social' | 'mental'
 export type AttributeKey = 'str' | 'dex' | 'sta' | 'cha' | 'man' | 'com' | 'int' | 'wit' | 'res'
 export type SkillKey = 'ath' | 'bra' | 'cra' | 'dri' | 'fir' | 'mel' | 'lar' | 'ste' | 'sur' |
-  'ani' | 'eti' | 'ins' | 'int' | 'lea' | 'per' | 'sub' | 'str' |
+  'ani' | 'eti' | 'ins' | 'int' | 'lea' | 'per' | 'prf' | 'sub' | 'str' |
   'aca' | 'awa' | 'fin' | 'inv' | 'med' | 'occ' | 'pol' | 'sci' | 'tec'
 export type SkillSpreadType = 'balanced' | 'specialist' | 'jack_of_all_trades'
 export type TraitPackType = 'merits' | 'backgrounds'

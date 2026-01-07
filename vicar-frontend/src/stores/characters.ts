@@ -41,12 +41,17 @@ export const useCharactersStore = defineStore('characters', {
     },
 
     async createCharacter(req: V5CharacterCreateRequest) {
-      const char = await createCharacter(req)
-      if (char) {
-        this.characters.unshift(char)
-        this.total++
+      const result = await createCharacter(req)
+      if (result) {
+        const char = await getCharacter(result.id)
+        if (char) {
+          this.currentCharacter = char
+          this.characters.unshift(char)
+          this.total++
+          return char
+        }
       }
-      return char
+      return null
     },
 
     async updateCharacter(id: string, req: V5CharacterUpdateRequest) {

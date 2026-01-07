@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, computed, shallowRef } from 'vue'
+import {onMounted, computed, shallowRef, watch, ref, nextTick} from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useCharactersStore } from '@/stores/characters'
 import { useCharacterEditor } from '@/composables/useCharacterEditor'
@@ -11,15 +11,21 @@ import PredatorTypeStep from '@/components/characters/steps/PredatorTypeStep.vue
 import AttributesStep from '@/components/characters/steps/AttributesStep.vue'
 import SkillsStep from '@/components/characters/steps/SkillsStep.vue'
 import DisciplinesStep from '@/components/characters/steps/DisciplinesStep.vue'
+import TraitsStep from '@/components/characters/steps/TraitsStep.vue'
 import OptionalStep from '@/components/characters/steps/OptionalStep.vue'
+import type {V5Character} from "@/@types/v5.ts";
 
 const route = useRoute()
 const router = useRouter()
 const store = useCharactersStore()
 
 const characterId = computed(() => route.params.id as string)
+const isLoading = ref(true)
+const isSaving = ref(false)
+const lastSaved = ref<Date | null>(null)
+const lastSavedChar = ref<Partial<V5Character>>()
 
-const editor = useCharacterEditor(store.currentCharacter ?? undefined)
+const editor = useCharacterEditor()
 
 const stepComponents = shallowRef({
   initial: InitialSetupStep,
@@ -28,51 +34,87 @@ const stepComponents = shallowRef({
   attributes: AttributesStep,
   skills: SkillsStep,
   disciplines: DisciplinesStep,
+  traits: TraitsStep,
   optional: OptionalStep,
 })
 
 onMounted(async () => {
   if (characterId.value) {
     await store.fetchCharacter(characterId.value)
+
     if (store.currentCharacter) {
-      editor.character.value = {
-        ...editor.character.value,
-        ...store.currentCharacter
-      }
+      editor.character.value = store.currentCharacter
+      lastSavedChar.value = { ...store.currentCharacter }
     }
   }
+  await nextTick()
+  isLoading.value = false
 })
 
-async function saveAndContinue() {
-  if (characterId.value) {
-    await store.updateCharacter(characterId.value, editor.character.value)
+let saveTimeout: ReturnType<typeof setTimeout> | null = null
+
+watch(editor.character, async () => {
+  if (!characterId.value || isLoading.value) return
+
+  if (saveTimeout) {
+    clearTimeout(saveTimeout)
   }
+
+  const changes: any = {};
+  for (const key in editor.character.value) {
+    if (JSON.stringify(editor.character.value[key as keyof Partial<V5Character>]) !== JSON.stringify(lastSavedChar.value?.[key as keyof Partial<V5Character>])) {
+      changes[key] = editor.character.value[key as keyof Partial<V5Character>];
+    }
+  }
+
+  saveTimeout = setTimeout(async () => {
+    isSaving.value = true
+    try {
+      await store.updateCharacter(characterId.value, changes)
+      lastSaved.value = new Date()
+      lastSavedChar.value = { ...editor.character.value }
+      setTimeout(() => {
+        lastSaved.value = null
+      }, 5000)
+    } finally {
+      isSaving.value = false
+    }
+  }, 500)
+}, { deep: true })
+
+function nextStep() {
   editor.nextStep()
 }
 
-async function saveAndGoBack() {
-  if (characterId.value) {
-    await store.updateCharacter(characterId.value, editor.character.value)
-  }
+function previousStep() {
   editor.previousStep()
 }
 
-async function finish() {
-  if (characterId.value) {
-    await store.updateCharacter(characterId.value, editor.character.value)
-  }
+function finish() {
   router.push(`/characters/${characterId.value}`)
+}
+
+function formatTime(date: Date): string {
+  return date.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })
 }
 </script>
 
 <template>
-  <div class="editor">
+  <div v-if="isLoading" class="editor editor--loading">
+    <p>Lade Charakter...</p>
+  </div>
+
+  <div v-else class="editor">
     <div class="editor__header">
       <div class="header-left">
         <VButton variant="ghost" @click="router.push(`/characters/${characterId}`)">
           ← Zurück zur Ansicht
         </VButton>
         <h1>Character Editor</h1>
+      </div>
+      <div class="save-status">
+        <span v-if="isSaving" class="saving">Speichert...</span>
+        <span v-else-if="lastSaved" class="saved">Gespeichert um {{ formatTime(lastSaved) }}</span>
       </div>
     </div>
 
@@ -85,24 +127,24 @@ async function finish() {
     <div class="editor__content">
       <component
         :is="stepComponents[editor.currentStep.value]"
-        v-model="editor.character"
+        v-model="editor.character.value"
       />
     </div>
 
     <div class="editor__actions">
       <VButton
-        v-if="editor.canGoPrevious"
+        v-if="editor.canGoPrevious.value"
         variant="secondary"
-        @click="saveAndGoBack"
+        @click="previousStep"
       >
         Zurück
       </VButton>
 
       <VButton
-        v-if="editor.canGoNext && editor.currentStepIndex.value < editor.steps.length - 1"
+        v-if="editor.currentStepIndex.value < editor.steps.length - 1"
         variant="primary"
-        :disabled="!editor.canGoNext"
-        @click="saveAndContinue"
+        :disabled="!editor.canGoNext.value"
+        @click="nextStep"
       >
         Weiter
       </VButton>
@@ -126,8 +168,19 @@ async function finish() {
   max-width: 920px;
   margin: 0 auto;
 
+  &--loading {
+    display: grid;
+    place-items: center;
+    min-height: 50vh;
+    color: $text-1;
+  }
+
   &__header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
     margin-bottom: $s-6;
+    gap: $s-4;
 
     .header-left {
       display: flex;
@@ -155,9 +208,28 @@ async function finish() {
   }
 }
 
+.save-status {
+  font-size: 0.85rem;
+  padding: $s-2 $s-3;
+  border-radius: $r-sm;
+  background: rgba(255, 255, 255, 0.04);
+
+  .saving {
+    color: $text-2;
+  }
+
+  .saved {
+    color: rgba(100, 200, 100, 0.8);
+  }
+}
+
 @media (max-width: 420px) {
   .editor {
     padding: $s-4;
+
+    &__header {
+      flex-direction: column;
+    }
 
     &__actions {
       flex-direction: column-reverse;

@@ -18,6 +18,7 @@ const stepLabels: Record<EditorStep, string> = {
   attributes: 'Attribute',
   skills: 'Fähigkeiten',
   disciplines: 'Disziplinen',
+  traits: 'Vorzüge',
   optional: 'Optional',
 }
 
@@ -53,6 +54,22 @@ function getStepClass(step: EditorStep, index: number) {
   gap: $s-2;
   overflow-x: auto;
   padding: $s-3 0;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
+  -webkit-overflow-scrolling: touch;
+
+  &::-webkit-scrollbar {
+    height: 6px;
+  }
+
+  &::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  &::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.2);
+    border-radius: 3px;
+  }
 
   &__step {
     display: flex;

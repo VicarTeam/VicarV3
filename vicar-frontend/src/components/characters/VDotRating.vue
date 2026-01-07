@@ -5,10 +5,12 @@ const props = withDefaults(
   defineProps<{
     modelValue: number
     max?: number
+    min?: number
     readonly?: boolean
   }>(),
   {
     max: 5,
+    min: 0,
     readonly: false
   }
 )
@@ -23,7 +25,11 @@ const dots = computed(() => {
 
 function setRating(value: number) {
   if (!props.readonly) {
-    emit('update:modelValue', value)
+    if (value === props.modelValue && value > props.min) {
+      emit('update:modelValue', value - 1)
+    } else if (value >= props.min) {
+      emit('update:modelValue', value)
+    }
   }
 }
 </script>
@@ -35,7 +41,10 @@ function setRating(value: number) {
       :key="dot"
       type="button"
       class="dot"
-      :class="{ 'dot--filled': dot <= modelValue }"
+      :class="{
+        'dot--filled': dot <= modelValue,
+        'dot--locked': dot <= min
+      }"
       @click="setRating(dot)"
       :disabled="readonly"
     />
@@ -47,7 +56,8 @@ function setRating(value: number) {
 
 .dot-rating {
   display: flex;
-  gap: $s-2;
+  gap: $s-1;
+  flex-shrink: 0;
 
   &--readonly {
     pointer-events: none;
@@ -55,13 +65,14 @@ function setRating(value: number) {
 }
 
 .dot {
-  width: 24px;
-  height: 24px;
+  width: 20px;
+  height: 20px;
   border-radius: 50%;
   border: 2px solid rgba(255, 255, 255, .3);
   background: transparent;
   cursor: pointer;
   transition: all $t-fast $ease;
+  padding: 0;
 
   &:hover:not(:disabled) {
     border-color: rgba(255, 255, 255, .5);
@@ -71,6 +82,10 @@ function setRating(value: number) {
   &--filled {
     background: $grad-accent;
     border-color: $red-0;
+  }
+
+  &--locked {
+    opacity: 0.7;
   }
 
   &:disabled {
