@@ -7,6 +7,7 @@ func Register(api fiber.Router) {
 
 	characters.Get("", getCharacters)
 	characters.Post("", createCharacter)
+	characters.Post("/migrate", migrateCharacter)
 
 	characters.Get("/:id", getCharacter)
 	characters.Patch("/:id", updateCharacter)
