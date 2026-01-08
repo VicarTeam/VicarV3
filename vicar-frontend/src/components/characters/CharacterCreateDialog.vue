@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import {ref, onMounted, watch} from 'vue'
 import { useV5DataStore } from '@/stores/v5data'
 import { useCharactersStore } from '@/stores/characters'
 import { useToast } from '@/composables/useToast'
@@ -19,7 +19,7 @@ const toast = useToast()
 
 const name = ref('')
 const selectedBooks = ref<string[]>([])
-const generationEra = ref<GenerationEra>('newborn')
+const generationEra = ref<GenerationEra>('children')
 const generation = ref(13)
 const loading = ref(false)
 
@@ -28,9 +28,28 @@ const generationEras: { value: GenerationEra; label: string }[] = [
   { value: 'newborn', label: 'Neugeborene' },
   { value: 'ancillae', label: 'Ancillae' },
   { value: 'older', label: 'Ältere' },
-  { value: 'elder', label: 'Älteste' },
-  { value: 'cainesinheritance', label: 'Kains Erbe' },
+  { value: 'elder', label: 'Methusa/Antidiluvian' },
 ]
+
+watch(generationEra, () => {
+  switch (generationEra.value) {
+    case 'children':
+      generation.value = 13
+      break
+    case 'newborn':
+      generation.value = 12
+      break
+    case 'ancillae':
+      generation.value = 11
+      break
+    case 'older':
+      generation.value = 9
+      break
+    case 'elder':
+      generation.value = 5
+      break
+  }
+})
 
 onMounted(() => {
   v5data.fetchBooks()

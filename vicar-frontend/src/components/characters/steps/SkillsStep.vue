@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { computed, onMounted } from 'vue'
 import VCard from '@/components/ui/VCard.vue'
 import VDotRating from '@/components/characters/VDotRating.vue'
-import type { V5Character, CategoryKey, SkillKey, V5CharacterSkill, SkillSpreadType } from '@/@types/v5'
+import type { V5Character, CategoryKey, SkillKey, V5CharacterSkill, SkillSpreadType, V5CharacterInternalData } from '@/@types/v5'
 
 const character = defineModel<Partial<V5Character>>({ required: true })
 
@@ -48,29 +48,45 @@ const spreadOptions: { label: string; value: SkillSpreadType; distribution: Reco
   { label: 'Spezialist', value: 'specialist', distribution: { 4: 1, 3: 3, 2: 3, 1: 3, 0: 17 } },
 ]
 
-// Input refs for UI only
-const specializationInputs = ref<Record<string, string>>({})
-
-const freeSpecSkills: { key: SkillKey; label: string }[] = [
+const requiredFreeSpecSkills: { key: SkillKey; label: string }[] = [
   { key: 'aca', label: 'Geisteswissenschaften' },
   { key: 'cra', label: 'Handwerk' },
   { key: 'prf', label: 'Darbietung' },
   { key: 'sci', label: 'Naturwissenschaften' },
 ]
 
-// @ts-ignore
-const freeSpecInputs = ref<Record<SkillKey, string>>({
-// @ts-ignore
-  aca: '',
-// @ts-ignore
-  cra: '',
-// @ts-ignore
-  prf: '',
-// @ts-ignore
-  sci: '',
+onMounted(() => {
+  if (!character.value.internalData) {
+    character.value.internalData = {}
+  }
 })
-const freeChoiceSkill = ref<SkillKey | ''>('')
-const freeChoiceSpec = ref('')
+
+const internalData = computed<V5CharacterInternalData>({
+  get: () => character.value.internalData ?? {},
+  set: (val) => { character.value.internalData = val }
+})
+
+const freeSpecializations = computed(() => internalData.value.freeSpecializations ?? [])
+
+const predatorSpecializations = computed(() => internalData.value.predatorBonusesApplied?.specializations ?? [])
+
+function isFromPredator(skillKey: string, spec: string): boolean {
+  return predatorSpecializations.value.some(s => s.skillKey === skillKey && s.specialization === spec)
+}
+
+function isFromFreeChoice(skillKey: string, spec: string): boolean {
+  return freeSpecializations.value.some(s => s.skillKey === skillKey && s.specialization === spec)
+}
+
+function getFreeSpecValue(skillKey: SkillKey): string {
+  const existing = freeSpecializations.value.find(s => s.skillKey === skillKey)
+  return existing?.specialization ?? ''
+}
+
+const freeChoiceEntry = computed(() => {
+  const requiredKeys = requiredFreeSpecSkills.map(s => s.key)
+  return freeSpecializations.value.find(s => !requiredKeys.includes(s.skillKey as SkillKey)) ?? null
+})
 
 const localSkills = computed<V5CharacterSkill[]>({
   get: () => {
@@ -80,13 +96,32 @@ const localSkills = computed<V5CharacterSkill[]>({
         const existing = character.value?.skills?.find(
           s => s.category === category && s.key === def.key
         )
+        // Get base specializations from existing or empty
+        let specs = [...(existing?.specialization ?? [])]
+
+        // Merge in predator specializations that aren't already present
+        const predatorSpecs = predatorSpecializations.value.filter(s => s.skillKey === def.key)
+        predatorSpecs.forEach(ps => {
+          if (!specs.includes(ps.specialization)) {
+            specs.push(ps.specialization)
+          }
+        })
+
+        // Merge in free specializations that aren't already present (and have actual values)
+        const freeSpecs = freeSpecializations.value.filter(s => s.skillKey === def.key && s.specialization)
+        freeSpecs.forEach(fs => {
+          if (!specs.includes(fs.specialization)) {
+            specs.push(fs.specialization)
+          }
+        })
+
         skills.push({
           id: existing?.id ?? '',
           characterID: existing?.characterID ?? '',
           category: category as CategoryKey,
           key: def.key,
           value: existing?.value ?? 0,
-          specialization: existing?.specialization ?? [],
+          specialization: specs,
         })
       })
     })
@@ -122,66 +157,116 @@ function getSpecializations(category: CategoryKey, key: SkillKey): string[] {
   return skill?.specialization ?? []
 }
 
-function addSpecialization(category: CategoryKey, key: SkillKey) {
-  const inputKey = `${category}-${key}`
-  const inputValue = specializationInputs.value[inputKey]?.trim()
-  if (!inputValue) return
+function getSkillLabel(key: SkillKey): string {
+  for (const defs of Object.values(skillDefinitions)) {
+    const found = defs.find(d => d.key === key)
+    if (found) return found.label
+  }
+  return key
+}
 
-  const index = localSkills.value.findIndex(s => s.category === category && s.key === key)
-  if (index !== -1) {
-    const skill = localSkills.value[index]!
-    if (!skill.specialization.includes(inputValue)) {
-      localSkills.value[index] = {
+function updateFreeSpec(skillKey: SkillKey, newSpec: string) {
+  const trimmedSpec = newSpec.trim()
+  const existingFreeSpecs = [...freeSpecializations.value]
+  const existingIndex = existingFreeSpecs.findIndex(s => s.skillKey === skillKey)
+  const oldSpec = existingIndex !== -1 ? existingFreeSpecs[existingIndex]!.specialization : null
+
+  const skills = [...localSkills.value]
+  const skillIndex = skills.findIndex(s => s.key === skillKey)
+  if (skillIndex !== -1) {
+    const skill = skills[skillIndex]!
+    let newSpecs = [...skill.specialization]
+
+    if (oldSpec) {
+      newSpecs = newSpecs.filter(s => s !== oldSpec)
+    }
+
+    if (trimmedSpec && !newSpecs.includes(trimmedSpec)) {
+      newSpecs.push(trimmedSpec)
+    }
+
+    skills[skillIndex] = { ...skill, specialization: newSpecs }
+    localSkills.value = skills
+  }
+
+  if (existingIndex !== -1) {
+    if (trimmedSpec) {
+      existingFreeSpecs[existingIndex] = { skillKey, specialization: trimmedSpec }
+    } else {
+      existingFreeSpecs.splice(existingIndex, 1)
+    }
+  } else if (trimmedSpec) {
+    existingFreeSpecs.push({ skillKey, specialization: trimmedSpec })
+  }
+
+  internalData.value = { ...internalData.value, freeSpecializations: existingFreeSpecs }
+}
+
+function updateFreeChoiceSkill(skillKey: SkillKey | '') {
+  const existingFreeSpecs = [...freeSpecializations.value]
+  const requiredKeys = requiredFreeSpecSkills.map(s => s.key)
+
+  const existingIndex = existingFreeSpecs.findIndex(s => !requiredKeys.includes(s.skillKey as SkillKey))
+  const oldEntry = existingIndex !== -1 ? existingFreeSpecs[existingIndex] : null
+
+  // Remove old specialization from skills if exists
+  if (oldEntry && oldEntry.specialization) {
+    const skills = [...localSkills.value]
+    const skillIndex = skills.findIndex(s => s.key === oldEntry.skillKey)
+    if (skillIndex !== -1) {
+      const skill = skills[skillIndex]!
+      skills[skillIndex] = {
         ...skill,
-        specialization: [...skill.specialization, inputValue]
+        specialization: skill.specialization.filter(s => s !== oldEntry.specialization)
       }
-      localSkills.value = [...localSkills.value]
+      localSkills.value = skills
     }
   }
-  specializationInputs.value[inputKey] = ''
-}
 
-function removeSpecialization(category: CategoryKey, key: SkillKey, spec: string) {
-  const index = localSkills.value.findIndex(s => s.category === category && s.key === key)
-  if (index !== -1) {
-    const skill = localSkills.value[index]!
-    localSkills.value[index] = {
-      ...skill,
-      specialization: skill.specialization.filter(s => s !== spec)
+  if (skillKey) {
+    // Store skill selection (with empty spec for now)
+    if (existingIndex !== -1) {
+      existingFreeSpecs[existingIndex] = { skillKey, specialization: oldEntry?.specialization ?? '' }
+    } else {
+      existingFreeSpecs.push({ skillKey, specialization: '' })
     }
-    localSkills.value = [...localSkills.value]
+  } else if (existingIndex !== -1) {
+    existingFreeSpecs.splice(existingIndex, 1)
   }
+
+  internalData.value = { ...internalData.value, freeSpecializations: existingFreeSpecs }
 }
 
-function addFreeSpec(key: SkillKey) {
-  const value = freeSpecInputs.value[key]?.trim()
-  if (!value) return
+function updateFreeChoiceSpecValue(newSpec: string) {
+  const existingFreeSpecs = [...freeSpecializations.value]
+  const requiredKeys = requiredFreeSpecSkills.map(s => s.key)
+  const trimmedSpec = newSpec.trim()
 
-  const skill = localSkills.value.find(s => s.key === key)
-  if (skill && !skill.specialization.includes(value)) {
-    const index = localSkills.value.findIndex(s => s.key === key)
-    localSkills.value[index] = {
-      ...localSkills.value[index],
-      specialization: [...localSkills.value[index]!.specialization, value]
-    } as any
-    localSkills.value = [...localSkills.value]
+  const existingIndex = existingFreeSpecs.findIndex(s => !requiredKeys.includes(s.skillKey as SkillKey))
+  if (existingIndex === -1) return // No skill selected yet
+
+  const entry = existingFreeSpecs[existingIndex]!
+  const oldSpec = entry.specialization
+
+  // Remove old spec from skills array
+  if (oldSpec) {
+    const skills = [...localSkills.value]
+    const skillIndex = skills.findIndex(s => s.key === entry.skillKey)
+    if (skillIndex !== -1) {
+      const skill = skills[skillIndex]!
+      skills[skillIndex] = {
+        ...skill,
+        specialization: skill.specialization.filter(s => s !== oldSpec)
+      }
+      localSkills.value = skills
+    }
   }
-  freeSpecInputs.value[key] = ''
-}
 
-function addFreeChoiceSpec() {
-  if (!freeChoiceSkill.value || !freeChoiceSpec.value.trim()) return
+  // Update entry with new spec
+  existingFreeSpecs[existingIndex] = { skillKey: entry.skillKey, specialization: trimmedSpec }
+  internalData.value = { ...internalData.value, freeSpecializations: existingFreeSpecs }
 
-  const skill = localSkills.value.find(s => s.key === freeChoiceSkill.value)
-  if (skill && !skill.specialization.includes(freeChoiceSpec.value.trim())) {
-    const index = localSkills.value.findIndex(s => s.key === freeChoiceSkill.value)
-    localSkills.value[index] = {
-      ...localSkills.value[index],
-      specialization: [...localSkills.value[index]!.specialization, freeChoiceSpec.value.trim()]
-    } as any
-    localSkills.value = [...localSkills.value]
-  }
-  freeChoiceSpec.value = ''
+  // Add new spec to skills array (will be merged via localSkills computed)
 }
 
 const currentDistribution = computed(() => {
@@ -292,13 +377,15 @@ function getMaxForSpread(): number {
                   v-for="spec in getSpecializations(category, skill.key)"
                   :key="spec"
                   class="spec-tag"
+                  :class="{
+                    'spec-tag--predator': isFromPredator(skill.key, spec),
+                    'spec-tag--free': isFromFreeChoice(skill.key, spec)
+                  }"
+                  :title="isFromPredator(skill.key, spec) ? 'Vom Jagdverhalten' : isFromFreeChoice(skill.key, spec) ? 'Freie Spezialisierung' : ''"
                 >
                   {{ spec }}
-                  <button
-                    type="button"
-                    class="spec-remove"
-                    @click="removeSpecialization(category, skill.key, spec)"
-                  >×</button>
+                  <span v-if="isFromPredator(skill.key, spec)" class="spec-source">🩸</span>
+                  <span v-else-if="isFromFreeChoice(skill.key, spec)" class="spec-source">★</span>
                 </span>
               </div>
             </div>
@@ -312,24 +399,26 @@ function getMaxForSpread(): number {
       <p class="info-text">Du erhältst 5 kostenlose Spezialisierungen: je eine für Geisteswissenschaften, Handwerk, Darbietung, Naturwissenschaften und eine beliebige.</p>
 
       <div class="free-specs">
-        <div v-for="spec in freeSpecSkills" :key="spec.key" class="free-spec-row">
+        <div v-for="spec in requiredFreeSpecSkills" :key="spec.key" class="free-spec-row">
           <span class="free-spec-label">{{ spec.label }}:</span>
-          <div class="free-spec-input-row">
-            <input
-              type="text"
-              class="input"
-              v-model="freeSpecInputs[spec.key]"
-              :placeholder="`Spezialisierung für ${spec.label}`"
-              @keydown.enter.prevent="addFreeSpec(spec.key)"
-            />
-            <button type="button" class="btn" @click="addFreeSpec(spec.key)">+</button>
-          </div>
+          <input
+            type="text"
+            class="input"
+            :value="getFreeSpecValue(spec.key)"
+            :placeholder="`Spezialisierung für ${spec.label}`"
+            @input="(e) => updateFreeSpec(spec.key, (e.target as HTMLInputElement).value)"
+            @blur="(e) => updateFreeSpec(spec.key, (e.target as HTMLInputElement).value)"
+          />
         </div>
 
         <div class="free-spec-row free-spec-row--choice">
           <span class="free-spec-label">Freie Wahl:</span>
           <div class="free-choice-row">
-            <select v-model="freeChoiceSkill" class="select">
+            <select
+              :value="freeChoiceEntry?.skillKey ?? ''"
+              class="select"
+              @change="(e) => updateFreeChoiceSkill((e.target as HTMLSelectElement).value as SkillKey | '')"
+            >
               <option value="">Fähigkeit wählen...</option>
               <option v-for="skill in allSkillsFlat" :key="skill.key" :value="skill.key">
                 {{ skill.label }}
@@ -338,11 +427,32 @@ function getMaxForSpread(): number {
             <input
               type="text"
               class="input"
-              v-model="freeChoiceSpec"
+              :value="freeChoiceEntry?.specialization ?? ''"
               placeholder="Spezialisierung"
-              @keydown.enter.prevent="addFreeChoiceSpec"
+              :disabled="!freeChoiceEntry?.skillKey"
+              @input="(e) => updateFreeChoiceSpecValue((e.target as HTMLInputElement).value)"
+              @blur="(e) => updateFreeChoiceSpecValue((e.target as HTMLInputElement).value)"
             />
-            <button type="button" class="btn" @click="addFreeChoiceSpec">+</button>
+          </div>
+        </div>
+      </div>
+
+      <div v-if="freeSpecializations.filter(s => s.specialization).length > 0" class="applied-free-specs">
+        <h4>Gewählte freie Spezialisierungen:</h4>
+        <div class="applied-spec-list">
+          <div v-for="spec in freeSpecializations.filter(s => s.specialization)" :key="`${spec.skillKey}-${spec.specialization}`" class="applied-spec-item">
+            <span class="applied-spec-skill">{{ getSkillLabel(spec.skillKey as SkillKey) }}:</span>
+            <span class="applied-spec-value">{{ spec.specialization }}</span>
+          </div>
+        </div>
+      </div>
+
+      <div v-if="predatorSpecializations.length > 0" class="predator-specs">
+        <h4>Spezialisierungen vom Jagdverhalten:</h4>
+        <div class="applied-spec-list">
+          <div v-for="spec in predatorSpecializations" :key="`${spec.skillKey}-${spec.specialization}`" class="applied-spec-item applied-spec-item--predator">
+            <span class="applied-spec-skill">{{ getSkillLabel(spec.skillKey as SkillKey) }}:</span>
+            <span class="applied-spec-value">{{ spec.specialization }}</span>
           </div>
         </div>
       </div>
@@ -371,6 +481,13 @@ h3 {
   color: $text-1;
   padding-bottom: $s-2;
   border-bottom: 1px solid $border;
+}
+
+h4 {
+  margin: 0 0 $s-2;
+  font-family: $font-head;
+  font-size: 0.95rem;
+  color: $text-1;
 }
 
 .spread-selection {
@@ -502,8 +619,6 @@ h3 {
 
 .specializations {
   padding: 0 $s-2 $s-2;
-  display: grid;
-  gap: $s-2;
 }
 
 .spec-tags {
@@ -518,65 +633,24 @@ h3 {
   gap: $s-1;
   padding: $s-1 $s-2;
   border-radius: $r-sm;
-  background: rgba(255, 59, 84, .12);
-  color: $text-0;
+  background: rgba(255, 255, 255, .05);
+  color: $text-1;
   font-size: 0.75rem;
-}
 
-.spec-remove {
-  background: none;
-  border: none;
-  color: $text-2;
-  cursor: pointer;
-  padding: 0;
-  font-size: 0.9rem;
-  line-height: 1;
-
-  &:hover {
+  &--predator {
+    background: rgba(255, 59, 84, .15);
     color: $red-0;
   }
-}
 
-.spec-input-row {
-  display: flex;
-  gap: $s-1;
-}
-
-.spec-input {
-  flex: 1;
-  padding: $s-1 $s-2;
-  border-radius: $r-sm;
-  border: 1px solid $border;
-  background: rgba(255, 255, 255, .02);
-  color: $text-0;
-  font-size: 0.75rem;
-  font-family: $font-body;
-
-  &::placeholder {
-    color: $text-2;
-  }
-
-  &:focus {
-    outline: none;
-    border-color: $red-0;
+  &--free {
+    background: rgba(100, 200, 100, .15);
+    color: rgba(100, 200, 100, 0.9);
   }
 }
 
-.spec-add-btn {
-  padding: $s-1 $s-2;
-  border-radius: $r-sm;
-  border: 1px solid $border;
-  background: rgba(255, 255, 255, .02);
-  color: $text-1;
-  cursor: pointer;
-  font-size: 0.85rem;
-  transition: all $t-fast $ease;
-
-  &:hover {
-    border-color: $red-0;
-    background: rgba(255, 59, 84, .08);
-    color: $text-0;
-  }
+.spec-source {
+  font-size: 0.65rem;
+  opacity: 0.8;
 }
 
 .info-text {
@@ -605,14 +679,9 @@ h3 {
   color: $text-1;
 }
 
-.free-spec-input-row {
-  display: flex;
-  gap: $s-2;
-}
-
 .free-choice-row {
   display: grid;
-  grid-template-columns: 1fr 1fr auto;
+  grid-template-columns: 1fr 1fr;
   gap: $s-2;
 }
 
@@ -632,6 +701,11 @@ h3 {
 
   &::placeholder {
     color: $text-2;
+  }
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
   }
 }
 
@@ -655,21 +729,39 @@ h3 {
   }
 }
 
-.btn {
+.applied-free-specs,
+.predator-specs {
+  margin-top: $s-4;
+  padding-top: $s-4;
+  border-top: 1px solid $border;
+}
+
+.applied-spec-list {
+  display: grid;
+  gap: $s-2;
+}
+
+.applied-spec-item {
+  display: flex;
+  gap: $s-2;
   padding: $s-2 $s-3;
   border-radius: $r-sm;
-  border: 1px solid $border;
-  background: rgba(255, 255, 255, .02);
-  color: $text-1;
-  cursor: pointer;
-  font-size: 0.9rem;
-  transition: all $t-fast $ease;
+  background: rgba(100, 200, 100, .08);
+  border: 1px solid rgba(100, 200, 100, .2);
 
-  &:hover {
-    border-color: $red-0;
+  &--predator {
     background: rgba(255, 59, 84, .08);
-    color: $text-0;
+    border-color: rgba(255, 59, 84, .2);
   }
+}
+
+.applied-spec-skill {
+  font-weight: 500;
+  color: $text-1;
+}
+
+.applied-spec-value {
+  color: $text-0;
 }
 
 @media (max-width: 768px) {

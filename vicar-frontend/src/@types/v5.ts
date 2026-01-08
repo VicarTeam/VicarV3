@@ -179,6 +179,31 @@ export interface V5CharacterCategory {
   name: string
 }
 
+// Internal data for tracking character creation choices
+export interface V5CharacterInternalData {
+  // Predator type action choices - keyed by action ID
+  predatorActionChoices?: Record<string, {
+    skillKey?: string
+    specialization?: string
+    disciplineID?: string
+  }>
+  // Predator type bonuses that were applied (for reverting)
+  predatorBonusesApplied?: {
+    humanityChange?: number
+    bloodPotencyChange?: number
+    specializations?: { skillKey: string; specialization: string }[]
+    disciplinePoints?: { disciplineID: string; points: number }[]
+  }
+  // Discipline distribution selection
+  disciplineDistribution?: {
+    primaryDisciplineID?: string  // Gets 2 points
+    secondaryDisciplineID?: string  // Gets 1 point
+    predatorBonusDisciplineID?: string  // Gets predator bonus points
+  }
+  // Free specializations chosen in skills step
+  freeSpecializations?: { skillKey: string; specialization: string }[]
+}
+
 export interface V5Character {
   userID: string
   id: string
@@ -215,6 +240,7 @@ export interface V5Character {
   fullCustomization: boolean
   version: number
   skillSpreadType: SkillSpreadType
+  internalData: V5CharacterInternalData
   books: V5Book[]
   categories: V5CharacterCategory[]
   attributes: V5CharacterAttribute[]

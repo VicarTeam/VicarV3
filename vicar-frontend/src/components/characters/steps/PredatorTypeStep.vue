@@ -4,7 +4,7 @@ import { useV5DataStore } from '@/stores/v5data'
 import VCard from '@/components/ui/VCard.vue'
 import VModal from '@/components/ui/VModal.vue'
 import VButton from '@/components/ui/VButton.vue'
-import type { V5Character, V5PredatorType, V5PredatorAction } from '@/@types/v5'
+import type { V5Character, V5PredatorType, V5PredatorAction, V5CharacterInternalData } from '@/@types/v5'
 
 const character = defineModel<Partial<V5Character>>({ required: true })
 const v5data = useV5DataStore()
@@ -15,23 +15,10 @@ const actionsToProcess = ref<V5PredatorAction[]>([])
 const currentActionIndex = ref(0)
 const actionChoices = ref<Record<string, any>>({})
 
-// Skill key mapping: JSON keys -> Frontend keys
 const skillKeyMap: Record<string, string> = {
-  ken: 'ani', // Animal Ken
-  stw: 'str', // Streetwise
-  pes: 'per', // Persuasion
-  per: 'prf', // Performance
+  ken: 'ani', stw: 'str', pes: 'per', per: 'prf',
 }
 
-// Reverse mapping
-const skillKeyMapReverse: Record<string, string> = {
-  ani: 'ken',
-  str: 'stw',
-  per: 'pes',
-  prf: 'per',
-}
-
-// Skill labels
 const skillLabels: Record<string, string> = {
   ath: 'Athletik', bra: 'Handgemenge', cra: 'Handwerk', dri: 'Fahren',
   fir: 'Schusswaffen', lar: 'Heimlichkeit', mel: 'Nahkampf', ste: 'Diebstahl',
@@ -40,7 +27,6 @@ const skillLabels: Record<string, string> = {
   sub: 'Täuschung', str: 'Szenekenntnis', aca: 'Bildung', awa: 'Aufmerksamkeit',
   fin: 'Finanzen', inv: 'Nachforschung', med: 'Medizin', occ: 'Okkultismus',
   pol: 'Politik', sci: 'Wissenschaft', tec: 'Technologie',
-  // Also map JSON keys for display
   ken: 'Tierkunde', stw: 'Szenekenntnis', pes: 'Überreden',
 }
 
@@ -50,21 +36,26 @@ onMounted(async () => {
     v5data.fetchClans(),
     v5data.fetchDisciplines(),
   ])
+  if (!character.value.internalData) {
+    character.value.internalData = {}
+  }
 })
 
-// Get character's clan oldVicarID for restriction checking
+const internalData = computed<V5CharacterInternalData>({
+  get: () => character.value.internalData ?? {},
+  set: (val) => { character.value.internalData = val }
+})
+
 const characterClanOldVicarID = computed(() => {
   if (!character.value.clanID) return null
   const clan = v5data.clans?.find(c => c.id === character.value.clanID)
   return clan?.oldVicarID ?? null
 })
 
-// Get character's selected books oldVicarIDs
 const characterBookOldVicarIDs = computed(() => {
   return character.value.books?.map(b => b.oldVicarID).filter(id => id !== undefined) ?? []
 })
 
-// Check if a predator type passes its restrictions
 function checkPredatorTypeRestriction(predator: V5PredatorType): { allowed: boolean; reason?: string } {
   if (!predator.restriction) return { allowed: true }
 
@@ -99,7 +90,6 @@ function checkPredatorTypeRestriction(predator: V5PredatorType): { allowed: bool
   return { allowed: true }
 }
 
-// Filter available predator types
 const availablePredatorTypes = computed(() => {
   return v5data.predatorTypes?.map(p => ({
     ...p,
@@ -107,35 +97,34 @@ const availablePredatorTypes = computed(() => {
   })) ?? []
 })
 
-// Current action being processed
+const selectedPredatorType = computed(() => {
+  if (!character.value.predatorTypeID) return null
+  return v5data.predatorTypes?.find(p => p.id === character.value.predatorTypeID) ?? null
+})
+
+const appliedBonuses = computed(() => {
+  const bonuses = internalData.value.predatorBonusesApplied
+  if (!bonuses) return null
+  return bonuses
+})
+
 const currentAction = computed(() => actionsToProcess.value[currentActionIndex.value] || null)
 
-// Parse specialization choices from action data
 function parseSpecializationChoices(action: V5PredatorAction): { skillKey: string; spec: string; needsInput: boolean; inputLabel?: string }[] {
   const data = action.data as any
   if (!data?.choices) return []
 
   return (data.choices as string[]).map(choice => {
     const [skillKey, specPart] = choice.split('=')
-    const frontendKey = skillKeyMap[skillKey] || skillKey
+    const frontendKey = skillKeyMap[skillKey as any] || skillKey
 
-    if (specPart.startsWith('$input:')) {
-      return {
-        skillKey: frontendKey,
-        spec: '',
-        needsInput: true,
-        inputLabel: specPart.replace('$input:', '')
-      }
+    if (specPart!.startsWith('$input:')) {
+      return { skillKey: frontendKey, spec: '', needsInput: true, inputLabel: specPart!.replace('$input:', '') }
     }
-    return {
-      skillKey: frontendKey,
-      spec: specPart,
-      needsInput: false
-    }
-  })
+    return { skillKey: frontendKey, spec: specPart, needsInput: false }
+  }) as any
 }
 
-// Parse discipline choices from action data
 function parseDisciplineChoices(action: V5PredatorAction): { disciplineOldVicarID: number; restriction?: any; allowed: boolean }[] {
   const data = action.data as any
   if (!data?.choices) return []
@@ -158,20 +147,18 @@ function parseDisciplineChoices(action: V5PredatorAction): { disciplineOldVicarI
       }
     }
 
-    return {
-      disciplineOldVicarID: discOldVicarID,
-      restriction: choice.restriction,
-      allowed
-    }
+    return { disciplineOldVicarID: discOldVicarID, restriction: choice.restriction, allowed }
   })
 }
 
-// Get discipline by oldVicarID
 function getDisciplineByOldVicarID(oldVicarID: number) {
   return v5data.disciplines?.find(d => d.oldVicarID === oldVicarID)
 }
 
-// Available discipline choices for current action
+function getDisciplineById(id: string) {
+  return v5data.disciplines?.find(d => d.id === id)
+}
+
 const availableDisciplineChoices = computed(() => {
   if (!currentAction.value || currentAction.value.type !== 'discipline_point') return []
 
@@ -182,13 +169,11 @@ const availableDisciplineChoices = computed(() => {
   })).filter(c => c.discipline && c.allowed)
 })
 
-// Available specialization choices for current action
 const availableSpecChoices = computed(() => {
   if (!currentAction.value || currentAction.value.type !== 'additional_specialization') return []
   return parseSpecializationChoices(currentAction.value)
 })
 
-// Check which actions need user input
 function actionsNeedingChoice(predator: V5PredatorType): V5PredatorAction[] {
   return predator.actions.filter(a => {
     if (a.type === 'additional_specialization') {
@@ -199,7 +184,6 @@ function actionsNeedingChoice(predator: V5PredatorType): V5PredatorAction[] {
       const choices = parseDisciplineChoices(a)
       const availableChoices = choices.filter(c => {
         if (!c.restriction) return true
-        // Check restriction
         if (c.restriction.type === 'only_clans') {
           return characterClanOldVicarID.value !== null &&
                  (c.restriction.data as number[]).includes(characterClanOldVicarID.value)
@@ -211,25 +195,63 @@ function actionsNeedingChoice(predator: V5PredatorType): V5PredatorAction[] {
       })
       return availableChoices.length > 1
     }
-    if (a.type === 'add_flaw' && (a.data as any)?.choices?.length > 1) {
-      return true
-    }
-    if (a.type === 'spend_background_points_between' || a.type === 'spend_flaw_points_between') {
-      return true
-    }
     return false
   })
+}
+
+function revertPreviousBonuses() {
+  const bonuses = internalData.value.predatorBonusesApplied
+  if (!bonuses) return
+
+  if (bonuses.humanityChange !== undefined) {
+    character.value.humanity = Math.max(0, Math.min(10, (character.value.humanity ?? 7) - bonuses.humanityChange))
+  }
+
+  if (bonuses.bloodPotencyChange !== undefined) {
+    character.value.bloodPotency = Math.max(0, Math.min(10, (character.value.bloodPotency ?? 1) - bonuses.bloodPotencyChange))
+  }
+
+  if (bonuses.specializations?.length) {
+    const skills = [...(character.value.skills || [])]
+    bonuses.specializations.forEach(spec => {
+      const skillIndex = skills.findIndex(s => s.key === spec.skillKey)
+      if (skillIndex !== -1) {
+        const skill = skills[skillIndex]
+        skills[skillIndex] = {
+          ...skill,
+          specialization: skill!.specialization.filter(s => s !== spec.specialization)
+        } as any
+      }
+    })
+    character.value.skills = skills
+  }
+
+  if (internalData.value.disciplineDistribution?.predatorBonusDisciplineID) {
+    const newDist = { ...internalData.value.disciplineDistribution }
+    delete newDist.predatorBonusDisciplineID
+    internalData.value = { ...internalData.value, disciplineDistribution: newDist }
+  }
+
+  internalData.value = {
+    ...internalData.value,
+    predatorActionChoices: {},
+    predatorBonusesApplied: undefined
+  }
 }
 
 function selectPredatorType(predatorTypeId: string) {
   const predator = v5data.predatorTypes?.find(p => p.id === predatorTypeId)
   if (!predator) return
 
-  // Check restrictions
   const restriction = checkPredatorTypeRestriction(predator)
   if (!restriction.allowed) return
 
-  // Get actions that need user choices
+  if (character.value.predatorTypeID === predatorTypeId) return
+
+  if (character.value.predatorTypeID) {
+    revertPreviousBonuses()
+  }
+
   const choiceActions = actionsNeedingChoice(predator)
 
   if (choiceActions.length > 0) {
@@ -239,92 +261,107 @@ function selectPredatorType(predatorTypeId: string) {
     actionChoices.value = {}
     showActionsModal.value = true
   } else {
-    // No choices needed, apply immediately
     applyPredatorType(predator, {})
   }
 }
 
 function applyPredatorType(predator: V5PredatorType, choices: Record<string, any>) {
-  // Store predator type and choices
   character.value.predatorTypeID = predator.id
 
-  // Apply all actions
+  const bonusesApplied: V5CharacterInternalData['predatorBonusesApplied'] = {
+    specializations: [],
+    disciplinePoints: []
+  }
+
   predator.actions.forEach(action => {
-    applyAction(action, choices[action.id])
+    applyAction(action, choices[action.id], bonusesApplied)
   })
+
+  internalData.value = {
+    ...internalData.value,
+    predatorActionChoices: choices,
+    predatorBonusesApplied: bonusesApplied
+  }
 }
 
-function applyAction(action: V5PredatorAction, choice?: any) {
+function applyAction(action: V5PredatorAction, choice: any, bonusesApplied: NonNullable<V5CharacterInternalData['predatorBonusesApplied']>) {
   const data = action.data as any
+  console.log('Applying action', action, 'with choice', choice)
 
   switch (action.type) {
     case 'humanity_change':
       if (data?.amount !== undefined) {
+        bonusesApplied.humanityChange = data.amount
         character.value.humanity = Math.max(0, Math.min(10, (character.value.humanity ?? 7) + data.amount))
       }
       break
 
     case 'blood_potency_change':
       if (data?.amount !== undefined) {
+        bonusesApplied.bloodPotencyChange = data.amount
         character.value.bloodPotency = Math.max(0, Math.min(10, (character.value.bloodPotency ?? 1) + data.amount))
       }
       break
 
     case 'additional_specialization':
+      let skillKey: string | undefined
+      let specialization: string | undefined
+
       if (choice?.skillKey && choice?.specialization) {
+        skillKey = skillKeyMap[choice.skillKey] || choice.skillKey
+        specialization = choice.specialization
+      } else if (data?.choices?.length === 1) {
+        const choices = parseSpecializationChoices(action)
+        if (choices.length === 1 && !choices[0]!.needsInput) {
+          skillKey = choices[0]!.skillKey
+          specialization = choices[0]!.spec
+        }
+      }
+
+      if (skillKey && specialization) {
         const skills = [...(character.value.skills || [])]
-        const frontendKey = skillKeyMap[choice.skillKey] || choice.skillKey
-        const skillIndex = skills.findIndex(s => s.key === frontendKey)
+        const skillIndex = skills.findIndex(s => s.key === skillKey)
         if (skillIndex !== -1) {
           const skill = skills[skillIndex]
-          if (!skill.specialization.includes(choice.specialization)) {
+          if (!skill!.specialization.includes(specialization)) {
             skills[skillIndex] = {
               ...skill,
-              specialization: [...skill.specialization, choice.specialization]
-            }
+              specialization: [...skill!.specialization, specialization]
+            } as any
             character.value.skills = skills
-          }
-        }
-      } else if (!choice && data?.choices?.length === 1) {
-        // Auto-apply single choice
-        const choices = parseSpecializationChoices(action)
-        if (choices.length === 1 && !choices[0].needsInput) {
-          const c = choices[0]
-          const skills = [...(character.value.skills || [])]
-          const skillIndex = skills.findIndex(s => s.key === c.skillKey)
-          if (skillIndex !== -1) {
-            const skill = skills[skillIndex]
-            if (!skill.specialization.includes(c.spec)) {
-              skills[skillIndex] = {
-                ...skill,
-                specialization: [...skill.specialization, c.spec]
-              }
-              character.value.skills = skills
-            }
+            bonusesApplied.specializations!.push({ skillKey, specialization })
           }
         }
       }
       break
 
     case 'discipline_point':
-      // Store discipline choice for DisciplinesStep to use
       if (choice?.disciplineID) {
-        const predatorDisciplines = character.value._predatorDisciplines || []
-        character.value._predatorDisciplines = [...predatorDisciplines, {
-          disciplineID: choice.disciplineID,
-          points: 1
-        }]
+        bonusesApplied.disciplinePoints!.push({ disciplineID: choice.disciplineID, points: 1 })
+        internalData.value = {
+          ...internalData.value,
+          disciplineDistribution: {
+            ...internalData.value.disciplineDistribution,
+            predatorBonusDisciplineID: choice.disciplineID
+          }
+        }
+      } else if (data?.choices?.length === 1) {
+        const choices = parseDisciplineChoices(action)
+        const availableChoices = choices.filter(c => c.allowed)
+        if (availableChoices.length === 1) {
+          const disc = getDisciplineByOldVicarID(availableChoices[0]!.disciplineOldVicarID)
+          if (disc) {
+            bonusesApplied.disciplinePoints!.push({ disciplineID: disc.id, points: 1 })
+            internalData.value = {
+              ...internalData.value,
+              disciplineDistribution: {
+                ...internalData.value.disciplineDistribution,
+                predatorBonusDisciplineID: disc.id
+              }
+            }
+          }
+        }
       }
-      break
-
-    // TODO: Implement other action types as needed
-    case 'add_merit':
-    case 'add_background':
-    case 'add_flaw':
-    case 'add_background_points':
-    case 'spend_background_points_between':
-    case 'spend_flaw_points_between':
-      // These will be handled in TraitsStep
       break
   }
 }
@@ -332,16 +369,12 @@ function applyAction(action: V5PredatorAction, choice?: any) {
 function setActionChoice(actionId: string, key: string, value: any) {
   actionChoices.value = {
     ...actionChoices.value,
-    [actionId]: {
-      ...(actionChoices.value[actionId] || {}),
-      [key]: value
-    }
+    [actionId]: { ...(actionChoices.value[actionId] || {}), [key]: value }
   }
 }
 
 function isCurrentActionComplete(): boolean {
   if (!currentAction.value) return true
-
   const choice = actionChoices.value[currentAction.value.id]
 
   switch (currentAction.value.type) {
@@ -383,14 +416,42 @@ function getActionTypeLabel(type: string): string {
     add_background: 'Hintergrund',
     add_background_points: 'Hintergrund',
     add_flaw: 'Schwäche',
-    spend_background_points_between: 'Hintergründe verteilen',
-    spend_flaw_points_between: 'Schwächen verteilen',
   }
   return labels[type] || type
 }
 </script>
 
 <template>
+  <VCard v-if="selectedPredatorType && appliedBonuses" style="margin-bottom: 1rem">
+    <h2>Angewandte Boni</h2>
+    <div class="applied-bonuses">
+      <div v-if="appliedBonuses.humanityChange" class="bonus-item">
+        <span class="bonus-label">Menschlichkeit:</span>
+        <span class="bonus-value" :class="{ 'bonus-value--positive': appliedBonuses.humanityChange > 0, 'bonus-value--negative': appliedBonuses.humanityChange < 0 }">
+          {{ appliedBonuses.humanityChange > 0 ? '+' : '' }}{{ appliedBonuses.humanityChange }}
+        </span>
+      </div>
+      <div v-if="appliedBonuses.bloodPotencyChange" class="bonus-item">
+        <span class="bonus-label">Blutpotenz:</span>
+        <span class="bonus-value" :class="{ 'bonus-value--positive': appliedBonuses.bloodPotencyChange > 0, 'bonus-value--negative': appliedBonuses.bloodPotencyChange < 0 }">
+          {{ appliedBonuses.bloodPotencyChange > 0 ? '+' : '' }}{{ appliedBonuses.bloodPotencyChange }}
+        </span>
+      </div>
+      <div v-if="appliedBonuses.specializations?.length" class="bonus-item">
+        <span class="bonus-label">Spezialisierungen:</span>
+        <span class="bonus-value" v-for="spec in appliedBonuses.specializations" :key="`${spec.skillKey}-${spec.specialization}`">
+          {{ skillLabels[spec.skillKey] || spec.skillKey }} ({{ spec.specialization }})
+        </span>
+      </div>
+      <div v-if="appliedBonuses.disciplinePoints?.length" class="bonus-item">
+        <span class="bonus-label">Disziplin-Bonus:</span>
+        <span class="bonus-value" v-for="dp in appliedBonuses.disciplinePoints" :key="dp.disciplineID">
+          {{ getDisciplineById(dp.disciplineID)?.name }} (+{{ dp.points }})
+        </span>
+      </div>
+    </div>
+  </VCard>
+
   <VCard>
     <h2>Jagdverhalten auswählen</h2>
 
@@ -423,7 +484,7 @@ function getActionTypeLabel(type: string): string {
       </div>
 
       <p v-if="!v5data.predatorTypes || v5data.predatorTypes.length === 0" class="empty-state">
-        Keine Jagdverhalten verfügbar. Stelle sicher, dass du Bücher ausgewählt hast.
+        Keine Jagdverhalten verfügbar.
       </p>
     </div>
   </VCard>
@@ -438,7 +499,6 @@ function getActionTypeLabel(type: string): string {
     <div v-if="currentAction" class="action-modal-content">
       <p class="action-description">{{ currentAction.description }}</p>
 
-      <!-- Additional Specialization -->
       <div v-if="currentAction.type === 'additional_specialization'" class="action-form">
         <div class="form-group">
           <label>Fähigkeit & Spezialisierung wählen:</label>
@@ -447,14 +507,14 @@ function getActionTypeLabel(type: string): string {
               v-for="(choice, idx) in availableSpecChoices"
               :key="idx"
               class="choice-item"
-              :class="{ 'choice-item--selected': actionChoices[currentAction.id]?.skillKey === choice.skillKey && (!choice.needsInput || actionChoices[currentAction.id]?.specialization) }"
+              :class="{ 'choice-item--selected': actionChoices[currentAction.id]?.skillKey === choice.skillKey }"
             >
               <input
                 type="radio"
                 :name="`spec-choice-${currentAction.id}`"
                 :value="choice.skillKey"
                 :checked="actionChoices[currentAction.id]?.skillKey === choice.skillKey"
-                @change="setActionChoice(currentAction.id, 'skillKey', choice.skillKey); if (!choice.needsInput) setActionChoice(currentAction.id, 'specialization', choice.spec)"
+                @change="() => {setActionChoice(currentAction!.id, 'skillKey', choice.skillKey); if (!choice.needsInput) setActionChoice(currentAction!.id, 'specialization', choice.spec)}"
               />
               <span class="choice-label">
                 {{ skillLabels[choice.skillKey] || choice.skillKey }}
@@ -463,23 +523,21 @@ function getActionTypeLabel(type: string): string {
             </label>
           </div>
 
-          <!-- Custom input if selected choice needs it -->
           <div
-            v-if="availableSpecChoices.find(c => c.skillKey === actionChoices[currentAction.id]?.skillKey)?.needsInput"
+            v-if="availableSpecChoices.find(c => c.skillKey === actionChoices[currentAction!.id]?.skillKey)?.needsInput"
             class="custom-spec-input"
           >
             <input
               type="text"
               class="form-input"
-              :placeholder="availableSpecChoices.find(c => c.skillKey === actionChoices[currentAction.id]?.skillKey)?.inputLabel || 'Spezialisierung eingeben...'"
+              :placeholder="availableSpecChoices.find(c => c.skillKey === actionChoices[currentAction!.id]?.skillKey)?.inputLabel || 'Spezialisierung eingeben...'"
               :value="actionChoices[currentAction.id]?.specialization || ''"
-              @input="(e) => setActionChoice(currentAction.id, 'specialization', (e.target as HTMLInputElement).value)"
+              @input="(e) => setActionChoice(currentAction!.id, 'specialization', (e.target as HTMLInputElement).value)"
             />
           </div>
         </div>
       </div>
 
-      <!-- Discipline Point -->
       <div v-if="currentAction.type === 'discipline_point'" class="action-form">
         <div class="form-group">
           <label>Disziplin wählen:</label>
@@ -514,11 +572,7 @@ function getActionTypeLabel(type: string): string {
     <template #footer>
       <div class="modal-actions">
         <VButton variant="secondary" @click="closeModal">Abbrechen</VButton>
-        <VButton
-          variant="primary"
-          :disabled="!isCurrentActionComplete()"
-          @click="nextAction"
-        >
+        <VButton variant="primary" :disabled="!isCurrentActionComplete()" @click="nextAction">
           {{ currentActionIndex < actionsToProcess.length - 1 ? 'Weiter' : 'Bestätigen' }}
         </VButton>
       </div>
@@ -629,6 +683,47 @@ h2 {
   text-align: center;
   padding: $s-6;
   color: $text-2;
+}
+
+// Applied bonuses
+.applied-bonuses {
+  display: grid;
+  gap: $s-3;
+}
+
+.bonus-item {
+  display: flex;
+  align-items: center;
+  gap: $s-2;
+  flex-wrap: wrap;
+  padding: $s-3;
+  border-radius: $r-md;
+  background: rgba(255, 255, 255, .02);
+  border: 1px solid $border;
+}
+
+.bonus-label {
+  font-weight: 600;
+  color: $text-1;
+  font-size: 0.9rem;
+}
+
+.bonus-value {
+  color: $text-0;
+  font-weight: 500;
+  padding: $s-1 $s-2;
+  border-radius: $r-sm;
+  background: rgba(255, 255, 255, .05);
+
+  &--positive {
+    color: rgba(100, 200, 100, 0.9);
+    background: rgba(100, 200, 100, .1);
+  }
+
+  &--negative {
+    color: $red-0;
+    background: rgba(255, 59, 84, .1);
+  }
 }
 
 // Modal

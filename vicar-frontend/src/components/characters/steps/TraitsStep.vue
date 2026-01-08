@@ -22,12 +22,10 @@ const expandedMeritPacks = ref<Set<string>>(new Set())
 const expandedBackgroundPacks = ref<Set<string>>(new Set())
 const expandedFlawPacks = ref<Set<string>>(new Set())
 
-// For suffix/specialization input
 const showSuffixModal = ref(false)
 const currentSuffixTrait = ref<{ pack: V5TraitPack; trait: V5Trait; level: number } | null>(null)
 const suffixInput = ref('')
 
-// Base points
 const BASE_MERIT_POINTS = 7
 const MIN_FLAW_POINTS = 2
 
@@ -411,6 +409,59 @@ const flawsByPack = computed(() => {
       </div>
     </VCard>
 
+    <!-- Flaws -->
+    <VCard>
+      <h2>Schwächen</h2>
+      <p class="info-text required-hint">Mindestens {{ MIN_FLAW_POINTS }} Punkte erforderlich</p>
+
+      <div v-if="isLoading" class="loading-text">Lade Schwächen...</div>
+      <div v-else-if="flawsByPack.size === 0" class="empty-text">Keine Schwächen verfügbar</div>
+      <div v-else class="packs-list">
+        <div
+          v-for="[packId, packData] in flawsByPack"
+          :key="packId"
+          class="pack-item"
+          :class="{ 'pack-item--expanded': expandedFlawPacks.has(packId) }"
+        >
+          <button
+            type="button"
+            class="pack-header"
+            @click="toggleFlawPack(packId)"
+          >
+            <div class="pack-info">
+              <h3>{{ packData.pack.name }}</h3>
+            </div>
+            <span class="pack-toggle">{{ expandedFlawPacks.has(packId) ? '−' : '+' }}</span>
+          </button>
+
+          <div v-if="expandedFlawPacks.has(packId)" class="pack-traits">
+            <div
+              v-for="flaw in packData.flaws"
+              :key="flaw.id"
+              class="trait-item trait-item--flaw"
+              :class="{ 'trait-item--selected': isFlawSelected(packId, flaw.id) }"
+            >
+              <div class="trait-info">
+                <div class="trait-header">
+                  <span class="trait-name">{{ flaw.name }}</span>
+                  <span class="trait-level-badge trait-level-badge--flaw">{{ Math.abs(flaw.level) }}</span>
+                </div>
+                <p class="trait-desc">{{ flaw.description }}</p>
+              </div>
+              <button
+                type="button"
+                class="flaw-toggle-btn"
+                :class="{ 'flaw-toggle-btn--selected': isFlawSelected(packId, flaw.id) }"
+                @click="toggleFlaw(packData.pack, flaw.id)"
+              >
+                {{ isFlawSelected(packId, flaw.id) ? '✓' : '+' }}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </VCard>
+
     <!-- Predator Type Bonuses -->
     <VCard v-if="predatorTraits.merits.length > 0 || predatorTraits.flaws.length > 0">
       <h2>Jagdverhalten-Boni</h2>
@@ -500,59 +551,6 @@ const flawsByPack = computed(() => {
                   </button>
                 </div>
               </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </VCard>
-
-    <!-- Flaws -->
-    <VCard>
-      <h2>Schwächen</h2>
-      <p class="info-text required-hint">Mindestens {{ MIN_FLAW_POINTS }} Punkte erforderlich</p>
-
-      <div v-if="isLoading" class="loading-text">Lade Schwächen...</div>
-      <div v-else-if="flawsByPack.size === 0" class="empty-text">Keine Schwächen verfügbar</div>
-      <div v-else class="packs-list">
-        <div
-          v-for="[packId, packData] in flawsByPack"
-          :key="packId"
-          class="pack-item"
-          :class="{ 'pack-item--expanded': expandedFlawPacks.has(packId) }"
-        >
-          <button
-            type="button"
-            class="pack-header"
-            @click="toggleFlawPack(packId)"
-          >
-            <div class="pack-info">
-              <h3>{{ packData.pack.name }}</h3>
-            </div>
-            <span class="pack-toggle">{{ expandedFlawPacks.has(packId) ? '−' : '+' }}</span>
-          </button>
-
-          <div v-if="expandedFlawPacks.has(packId)" class="pack-traits">
-            <div
-              v-for="flaw in packData.flaws"
-              :key="flaw.id"
-              class="trait-item trait-item--flaw"
-              :class="{ 'trait-item--selected': isFlawSelected(packId, flaw.id) }"
-            >
-              <div class="trait-info">
-                <div class="trait-header">
-                  <span class="trait-name">{{ flaw.name }}</span>
-                  <span class="trait-level-badge trait-level-badge--flaw">{{ Math.abs(flaw.level) }}</span>
-                </div>
-                <p class="trait-desc">{{ flaw.description }}</p>
-              </div>
-              <button
-                type="button"
-                class="flaw-toggle-btn"
-                :class="{ 'flaw-toggle-btn--selected': isFlawSelected(packId, flaw.id) }"
-                @click="toggleFlaw(packData.pack, flaw.id)"
-              >
-                {{ isFlawSelected(packId, flaw.id) ? '✓' : '+' }}
-              </button>
             </div>
           </div>
         </div>
