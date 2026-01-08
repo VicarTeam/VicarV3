@@ -524,25 +524,25 @@ function saveExperience() {
               <span class="label">Blutmacht:</span>
               <span>{{ character.bloodPotency }}</span>
             </div>
+            <div class="info-item">
+              <span class="label">Konzept:</span>
+              <span>
+                <VInput
+                  :model-value="character.concept"
+                  @update:model-value="updateTextField('concept', $event as string)"
+                  placeholder="Das Konzept deines Charakters…"
+                  style="width: 100%"
+                />
+              </span>
+            </div>
           </div>
         </VCard>
 
         <VCard>
-          <h2>Konzept & Leveln</h2>
-          <div class="form-grid">
-            <VInput
-              label="Konzept"
-              :model-value="character.concept"
-              @update:model-value="updateTextField('concept', $event as string)"
-              placeholder="Das Konzept deines Charakters…"
-            />
+          <h2>Leveln</h2>
+          <VButton variant="secondary" style="margin-bottom: 1rem" @click="showHistory = true">Level Verlauf</VButton>
 
-            <div style="display: flex; justify-content: center; align-items: flex-end; flex: 1; gap: 1rem">
-              <VExperienceBox v-model="character" @update-xp="saveExperience" style="flex: 1"/>
-
-              <VButton variant="secondary" @click="showHistory = true">Historie</VButton>
-            </div>
-          </div>
+          <VExperienceBox v-model="character" @update-xp="saveExperience" style="flex: 1"/>
         </VCard>
       </div>
 
