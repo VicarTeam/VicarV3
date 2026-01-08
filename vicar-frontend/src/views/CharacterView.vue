@@ -1,78 +1,109 @@
 <script setup lang="ts">
-import { onMounted, computed, ref } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
-import { useCharactersStore } from '@/stores/characters'
-import { useV5DataStore } from '@/stores/v5data'
-import VButton from '@/components/ui/VButton.vue'
-import VCard from '@/components/ui/VCard.vue'
-import VDotRating from '@/components/characters/VDotRating.vue'
-import type { AttributeKey, SkillKey, CategoryKey } from '@/@types/v5'
+import { onMounted, computed, ref } from "vue"
+import { useRoute, useRouter } from "vue-router"
+import { useCharactersStore } from "@/stores/characters"
+import { useV5DataStore } from "@/stores/v5data"
+import VButton from "@/components/ui/VButton.vue"
+import VCard from "@/components/ui/VCard.vue"
+import VInput from "@/components/ui/VInput.vue"
+import VTextarea from "@/components/ui/VTextarea.vue"
+import VDotRating from "@/components/characters/VDotRating.vue"
+import VTracker from "@/components/characters/VTracker.vue"
+import VHumanityTracker from "@/components/characters/VHumanityTracker.vue"
+import VHungerTracker from "@/components/characters/VHungerTracker.vue"
+import type { AttributeKey, SkillKey, CategoryKey, Resonance, V5DisciplineAbility } from "@/@types/v5"
+import VCharacterReadyAlert from "@/components/characters/VCharacterReadyAlert.vue";
+import VExperienceBox from "@/components/characters/VExperienceBox.vue";
+import VLevelHistoryModal from "@/components/characters/VLevelHistoryModal.vue";
+import VCharacterViewersModal from "@/components/characters/VCharacterViewersModal.vue";
+import VInventoryBox from "@/components/characters/VInventoryBox.vue";
 
 const route = useRoute()
 const router = useRouter()
 const store = useCharactersStore()
 const v5data = useV5DataStore()
+
 const isLoading = ref(true)
+const isSaving = ref(false)
+
+const showHistory = ref(false)
+const showViewers = ref(false)
 
 const characterId = computed(() => route.params.id as string)
-const character = computed(() => store.currentCharacter)
+const character = computed({
+  get: () => store.currentCharacter,
+  set: (val) => {
+    store.currentCharacter = val
+  }
+})
 
 const attributeLabels: Record<AttributeKey, string> = {
-  str: 'Stärke',
-  dex: 'Geschicklichkeit',
-  sta: 'Ausdauer',
-  cha: 'Charisma',
-  man: 'Manipulation',
-  com: 'Erscheinung',
-  int: 'Intelligenz',
-  wit: 'Witz',
-  res: 'Entschlossenheit',
+  str: "Stärke",
+  dex: "Geschicklichkeit",
+  sta: "Ausdauer",
+  cha: "Charisma",
+  man: "Manipulation",
+  com: "Fassung",
+  int: "Intelligenz",
+  wit: "Witz",
+  res: "Entschlossenheit"
 }
 
 const skillLabels: Record<SkillKey, string> = {
-  ath: 'Athletik',
-  bra: 'Handgemenge',
-  cra: 'Handwerk',
-  dri: 'Fahren',
-  fir: 'Schusswaffen',
-  mel: 'Nahkampf',
-  lar: 'Heimlichkeit',
-  ste: 'Überleben',
-  sur: 'Überlebensinstinkt',
-  ani: 'Tierkunde',
-  eti: 'Etikette',
-  ins: 'Einblick',
-  int: 'Einschüchtern',
-  lea: 'Anführen',
-  per: 'Überzeugen',
-  prf: 'Darbietung',
-  sub: 'Gassenwissen',
-  str: 'Täuschen',
-  aca: 'Akademik',
-  awa: 'Aufmerksamkeit',
-  fin: 'Finanzen',
-  inv: 'Untersuchung',
-  med: 'Medizin',
-  occ: 'Okkultismus',
-  pol: 'Politik',
-  sci: 'Wissenschaft',
-  tec: 'Technologie',
+  ath: "Athletik",
+  bra: "Handgemenge",
+  cra: "Handwerk",
+  dri: "Fahren",
+  fir: "Schusswaffen",
+  mel: "Nahkampf",
+  lar: "Heimlichkeit",
+  ste: "Überleben",
+  sur: "Überlebensinstinkt",
+  ani: "Tierkunde",
+  eti: "Etikette",
+  ins: "Einblick",
+  int: "Einschüchtern",
+  lea: "Anführen",
+  per: "Überzeugen",
+  prf: "Darbietung",
+  sub: "Gassenwissen",
+  str: "Täuschen",
+  aca: "Akademik",
+  awa: "Aufmerksamkeit",
+  fin: "Finanzen",
+  inv: "Untersuchung",
+  med: "Medizin",
+  occ: "Okkultismus",
+  pol: "Politik",
+  sci: "Wissenschaft",
+  tec: "Technologie"
 }
 
 const categoryLabels: Record<CategoryKey, string> = {
-  physical: 'Körperlich',
-  social: 'Sozial',
-  mental: 'Geistig',
+  physical: "Körperlich",
+  social: "Sozial",
+  mental: "Geistig"
 }
 
 const generationEraLabels: Record<string, string> = {
-  children: 'Kinder',
-  newborn: 'Neugeborene',
-  ancillae: 'Ancillae',
-  older: 'Ältere',
-  elder: 'Älteste',
-  cainesinheritance: 'Kains Erbe',
+  children: "Kinder",
+  newborn: "Neugeborene",
+  ancillae: "Ancillae",
+  older: "Ältere",
+  elder: "Älteste",
+  cainesinheritance: "Kains Erbe"
 }
+
+const resonanceLabels: Record<Resonance, string> = {
+  choleric: "Cholerisch",
+  melancholic: "Melancholisch",
+  phlegmatic: "Phlegmatisch",
+  sanguine: "Sanguinisch",
+  animalblood: "Tierblut",
+  "": "Leer"
+}
+
+const resonanceOptions: Resonance[] = ["", "choleric", "melancholic", "phlegmatic", "sanguine", "animalblood"]
 
 const clan = computed(() => {
   if (!character.value?.clanID) return null
@@ -84,11 +115,135 @@ const predatorType = computed(() => {
   return v5data.getPredatorTypeById(character.value.predatorTypeID)
 })
 
+function getDisciplineData(disciplineId: string) {
+  if (v5data.disciplines) {
+    const disc = v5data.disciplines.find((d) => d.id === disciplineId)
+    if (disc) return disc
+  }
+  if (!character.value?.clanID) return null
+  const selectedClan = v5data.getClanById(character.value.clanID)
+  return selectedClan?.disciplines?.find((d) => d.id === disciplineId) ?? null
+}
+
+function getAbilityData(disciplineId: string, abilityId: string): V5DisciplineAbility | null {
+  const disc = getDisciplineData(disciplineId)
+  return disc?.abilities?.find((a) => a.id === abilityId) ?? null
+}
+
+function getDisciplineName(disciplineId: string): string {
+  return getDisciplineData(disciplineId)?.name ?? "Unbekannt"
+}
+
+function getSelectedAbilities(disciplineId: string, abilities: { abilityID: string; level: number }[]) {
+  const disc = getDisciplineData(disciplineId)
+  if (!disc) return []
+  return abilities
+    .map((a) => {
+      const ability = disc.abilities?.find((ab) => ab.id === a.abilityID)
+      return ability ? { ...ability, usedLevel: a.level } : null
+    })
+    .filter(Boolean) as (V5DisciplineAbility & { usedLevel: number })[]
+}
+
+const calculatedHealth = computed(() => {
+  if (!character.value) return 0
+  const stamina = character.value.attributes?.find((a) => a.key === "sta")?.value ?? 0
+  let fortitudeBonus = 0
+
+  const fortitudeDisc = character.value.disciplineSelections?.find((d) => {
+    const disc = getDisciplineData(d.disciplineID)
+    return disc?.name?.toLowerCase().includes("seelenstärke") || disc?.name?.toLowerCase().includes("fortitude")
+  })
+
+  if (fortitudeDisc) {
+    const hasResilience = fortitudeDisc.abilities?.some((a) => {
+      const ability = getAbilityData(fortitudeDisc.disciplineID, a.abilityID)
+      return ability?.name?.toLowerCase().includes("resilienz") || ability?.name?.toLowerCase().includes("resilience")
+    })
+    if (hasResilience) fortitudeBonus = fortitudeDisc.currentLevel
+  }
+
+  return stamina + 3 + fortitudeBonus
+})
+
+const calculatedWillpower = computed(() => {
+  if (!character.value) return 0
+  const composure = character.value.attributes?.find((a) => a.key === "com")?.value ?? 0
+  const resolve = character.value.attributes?.find((a) => a.key === "res")?.value ?? 0
+  return composure + resolve
+})
+
+const willpowerRegenAmount = computed(() => {
+  if (!character.value) return 0
+  const composure = character.value.attributes?.find((a) => a.key === "com")?.value ?? 0
+  const resolve = character.value.attributes?.find((a) => a.key === "res")?.value ?? 0
+  return Math.max(composure, resolve)
+})
+
+const hasBloodSorcery = computed(() => {
+  if (!character.value) return false
+  return (
+    character.value.disciplineSelections?.some((d) => {
+      const disc = getDisciplineData(d.disciplineID)
+      return (
+        disc?.name?.toLowerCase().includes("blutmagie") ||
+        disc?.name?.toLowerCase().includes("blood sorcery") ||
+        disc?.name?.toLowerCase().includes("blutzauberei")
+      )
+    }) ?? false
+  )
+})
+
+const bloodSorceryLevel = computed(() => {
+  if (!character.value) return 0
+  const selection = character.value.disciplineSelections?.find((d) => {
+    const disc = getDisciplineData(d.disciplineID)
+    return (
+      disc?.name?.toLowerCase().includes("blutmagie") ||
+      disc?.name?.toLowerCase().includes("blood sorcery") ||
+      disc?.name?.toLowerCase().includes("blutzauberei")
+    )
+  })
+  return selection?.currentLevel ?? 0
+})
+
+const hasOblivion = computed(() => {
+  if (!character.value) return false
+  return (
+    character.value.disciplineSelections?.some((d) => {
+      const disc = getDisciplineData(d.disciplineID)
+      return disc?.name?.toLowerCase().includes("vergessenheit") || disc?.name?.toLowerCase().includes("oblivion")
+    }) ?? false
+  )
+})
+
+const oblivionLevel = computed(() => {
+  if (!character.value) return 0
+  const selection = character.value.disciplineSelections?.find((d) => {
+    const disc = getDisciplineData(d.disciplineID)
+    return disc?.name?.toLowerCase().includes("vergessenheit") || disc?.name?.toLowerCase().includes("oblivion")
+  })
+  return selection?.currentLevel ?? 0
+})
+
+const availableBloodRituals = computed(() => {
+  if (!v5data.bloodRituals) return []
+  return v5data.bloodRituals.filter((r) => r.level <= bloodSorceryLevel.value)
+})
+
+const availableOblivionCeremonies = computed(() => {
+  if (!v5data.oblivionCeremonies) return []
+  return v5data.oblivionCeremonies.filter((c) => c.level <= oblivionLevel.value)
+})
+
 onMounted(async () => {
   await Promise.all([
     v5data.fetchClans(),
     v5data.fetchPredatorTypes(),
     v5data.fetchTraitPacks(),
+    v5data.fetchDisciplines(),
+    v5data.fetchBloodRituals(),
+    v5data.fetchOblivionCeremonies()
   ])
 
   if (characterId.value) {
@@ -97,68 +252,265 @@ onMounted(async () => {
   isLoading.value = false
 })
 
+let saveTimeout: ReturnType<typeof setTimeout> | null = null
+
+async function saveField(field: string, value: any) {
+  if (!characterId.value) return
+
+  if (saveTimeout) clearTimeout(saveTimeout)
+
+  saveTimeout = setTimeout(async () => {
+    isSaving.value = true
+    try {
+      await store.updateCharacter(characterId.value, { [field]: value })
+    } finally {
+      isSaving.value = false
+    }
+  }, 450)
+}
+
 function goToEditor() {
   router.push(`/characters/${characterId.value}/edit`)
 }
 
 function getAttributesByCategory(category: CategoryKey) {
-  return character.value?.attributes?.filter(a => a.category === category) ?? []
+  return character.value?.attributes?.filter((a) => a.category === category) ?? []
 }
 
 function getSkillsByCategory(category: CategoryKey) {
-  return character.value?.skills?.filter(s => s.category === category) ?? []
+  return character.value?.skills?.filter((s) => s.category === category) ?? []
 }
 
 function getTraitPackName(packId: string): string {
-  const pack = v5data.traitPacks?.find(p => p.id === packId)
-  return pack?.name ?? 'Unbekannt'
+  const pack = v5data.traitPacks?.find((p) => p.id === packId)
+  return pack?.name ?? "Unbekannt"
 }
 
-function getTraitName(packId: string, traitId: string): string {
-  const pack = v5data.traitPacks?.find(p => p.id === packId)
-  const packTrait = pack?.packTraits?.find(pt => pt.trait.id === traitId)
-  return packTrait?.trait.name ?? 'Unbekannt'
+function getTraitInfo(packId: string, traitId: string): { name: string; isFlaw: boolean; description: string } {
+  const pack = v5data.traitPacks?.find((p) => p.id === packId)
+  const packTrait = pack?.packTraits?.find((pt) => pt.trait.id === traitId)
+  return {
+    name: packTrait?.trait.name ?? "Unbekannt",
+    isFlaw: packTrait?.trait.isFlaw ?? false,
+    description: packTrait?.trait.description ?? ""
+  }
 }
 
-function getDisciplineName(disciplineId: string): string {
-  if (!character.value?.clanID) return 'Unbekannt'
-  const selectedClan = v5data.getClanById(character.value.clanID)
-  const disc = selectedClan?.disciplines?.find(d => d.id === disciplineId)
-  return disc?.name ?? 'Unbekannt'
+function updateHunger(value: number) {
+  if (!character.value) return
+  character.value.hunger = value
+  saveField("hunger", value)
+}
+
+function updateHumanity(value: number) {
+  if (!character.value) return
+  character.value.humanity = value
+  saveField("humanity", value)
+}
+
+function updateStains(value: number) {
+  if (!character.value) return
+  character.value.stains = value
+  saveField("stains", value)
+}
+
+function updateHealthDamage(value: string[]) {
+  if (!character.value) return
+  character.value.healthDamage = value
+  saveField("healthDamage", value)
+}
+
+function updateWillpowerDamage(value: string[]) {
+  if (!character.value) return
+  character.value.willpowerDamage = value
+  saveField("willpowerDamage", value)
+}
+
+function updateResonance(value: Resonance) {
+  if (!character.value) return
+  character.value.resonance = value
+  saveField("resonance", value)
+}
+
+function updateTextField(field: string, value: string) {
+  if (!character.value) return
+    ;(character.value as any)[field] = value
+  saveField(field, value)
+}
+
+function handleAvatarUpload(event: Event) {
+  const input = event.target as HTMLInputElement
+  if (!input.files?.length) return
+
+  const file = input.files[0]
+  const reader = new FileReader()
+  reader.onload = (e) => {
+    const base64 = e.target?.result as string
+    if (character.value) {
+      character.value.avatar = base64
+      saveField("avatar", base64)
+    }
+  }
+  reader.readAsDataURL(file!)
+}
+
+function regenerateWillpowerSession() {
+  if (!character.value) return
+  const heal = Math.max(0, willpowerRegenAmount.value)
+  if (!heal) return
+
+  const src = Array.isArray(character.value.willpowerDamage) ? [...character.value.willpowerDamage] : []
+  const max = Math.max(0, calculatedWillpower.value)
+
+  const padded = new Array(max).fill("")
+  for (let i = 0; i < max; i++) {
+    const v = src[i]
+    padded[i] = v === "superficial" || v === "aggravated" ? v : ""
+  }
+
+  let remaining = heal
+  for (let i = 0; i < padded.length && remaining > 0; i++) {
+    if (padded[i] === "superficial") {
+      padded[i] = ""
+      remaining--
+    }
+  }
+
+  character.value.willpowerDamage = padded
+  saveField("willpowerDamage", padded)
+}
+
+function saveExperience() {
+  if (!character.value) return
+  saveField("exp", character.value.exp)
 }
 </script>
 
 <template>
   <div v-if="isLoading" class="character-view character-view--loading">
-    <p>Lade Charakter...</p>
+    <p>Lade Charakter…</p>
   </div>
 
-  <div class="character-view" v-else-if="character">
+  <div class="character-view" v-else-if="!!character">
     <div class="character-view__header">
       <div class="header-left">
-        <VButton variant="ghost" @click="router.push('/')">
-          ← Zurück
-        </VButton>
+        <VButton variant="ghost" @click="router.push('/')">← Zurück</VButton>
         <h1>{{ character.name }}</h1>
         <p class="subtitle" v-if="clan">{{ clan.slogan }}</p>
       </div>
-      <VButton variant="primary" @click="goToEditor">
-        Bearbeiten
-      </VButton>
+
+      <div class="header-right">
+        <div style="display: flex; gap: 0.5rem">
+          <VButton variant="secondary" @click="showViewers = true">Viewer verwalten</VButton>
+          <VButton variant="primary" @click="goToEditor">Bearbeiten</VButton>
+        </div>
+
+        <div class="avatar-container">
+          <label class="avatar-upload">
+            <img v-if="character.avatar" :src="character.avatar" :alt="character.name" class="avatar-image" />
+            <div v-else class="avatar-placeholder">
+              <span>{{ character.name.charAt(0).toUpperCase() }}</span>
+            </div>
+
+            <input type="file" accept="image/*" class="avatar-input" @change="handleAvatarUpload" />
+            <div class="avatar-overlay">
+              <span>Ändern</span>
+            </div>
+          </label>
+        </div>
+      </div>
     </div>
 
+    <VCharacterReadyAlert :character="character" style="margin-bottom: 1rem"/>
+
     <div class="character-view__content">
+      <div class="trackers-section">
+
+        <VCard class="tracker-card">
+          <div class="tracker-card__head">
+            <h2>Gesundheit</h2>
+          </div>
+          <div class="tracker-info">
+            <span class="tracker-formula">
+              Ausdauer ({{ character.attributes?.find((a) => a.key === "sta")?.value ?? 0 }}) + 3
+            </span>
+          </div>
+          <VTracker :max="calculatedHealth" :damage="character.healthDamage ?? []" @update:damage="updateHealthDamage" />
+        </VCard>
+
+        <VCard class="tracker-card">
+          <div class="tracker-card__head">
+            <h2>Willenskraft</h2>
+          </div>
+
+          <div class="tracker-info tracker-info--row">
+            <span class="tracker-formula">
+              Fassung ({{ character.attributes?.find((a) => a.key === "com")?.value ?? 0 }}) + Entschlossenheit
+              ({{ character.attributes?.find((a) => a.key === "res")?.value ?? 0 }})
+            </span>
+          </div>
+
+          <VTracker
+            :max="calculatedWillpower"
+            :damage="character.willpowerDamage ?? []"
+            @update:damage="updateWillpowerDamage"
+          />
+
+          <div style="display: flex; justify-content: center; margin-top: 1rem">
+            <VButton variant="ghost" @click="regenerateWillpowerSession">
+              Sitzungsstart: {{ willpowerRegenAmount }} oberflächlich heilen
+            </VButton>
+          </div>
+        </VCard>
+
+        <VCard class="tracker-card">
+          <div class="tracker-card__head">
+            <h2>Hunger & Resonanz</h2>
+          </div>
+          <VHungerTracker :model-value="character.hunger" @update:model-value="updateHunger" />
+
+
+          <div class="form-field" style="margin-top: 1rem">
+            <label class="field-label">Resonanz</label>
+            <div class="resonance-select" role="group" aria-label="Resonanz">
+              <button
+                v-for="res in resonanceOptions"
+                :key="res"
+                type="button"
+                class="resonance-option"
+                :class="{ 'resonance-option--active': character.resonance === res }"
+                @click="updateResonance(res)"
+              >
+                {{ resonanceLabels[res] }}
+              </button>
+            </div>
+          </div>
+        </VCard>
+
+        <VCard class="tracker-card">
+          <div class="tracker-card__head">
+            <h2>Menschlichkeit</h2>
+          </div>
+          <VHumanityTracker
+            :humanity="character.humanity"
+            :stains="character.stains"
+            @update:humanity="updateHumanity"
+            @update:stains="updateStains"
+          />
+        </VCard>
+      </div>
+
       <div class="content-grid">
         <VCard>
           <h2>Grundinformationen</h2>
           <div class="info-grid">
             <div class="info-item">
               <span class="label">Clan:</span>
-              <span>{{ clan?.name || '-' }}</span>
+              <span>{{ clan?.name || "—" }}</span>
             </div>
             <div class="info-item">
               <span class="label">Jagdverhalten:</span>
-              <span>{{ predatorType?.name || '-' }}</span>
+              <span>{{ predatorType?.name || "—" }}</span>
             </div>
             <div class="info-item">
               <span class="label">Generation:</span>
@@ -168,31 +520,83 @@ function getDisciplineName(disciplineId: string): string {
               <span class="label">Sire:</span>
               <span>{{ character.sire }}</span>
             </div>
+            <div class="info-item">
+              <span class="label">Blutmacht:</span>
+              <span>{{ character.bloodPotency }}</span>
+            </div>
           </div>
         </VCard>
 
         <VCard>
-          <h2>Werte</h2>
-          <div class="stats-grid">
-            <div class="stat-item">
-              <span class="stat-label">Hunger</span>
-              <div class="stat-value stat-value--hunger">{{ character.hunger }}</div>
-            </div>
-            <div class="stat-item">
-              <span class="stat-label">Menschlichkeit</span>
-              <div class="stat-value">{{ character.humanity }}</div>
-            </div>
-            <div class="stat-item">
-              <span class="stat-label">Blutmacht</span>
-              <div class="stat-value stat-value--potency">{{ character.bloodPotency }}</div>
-            </div>
-            <div class="stat-item" v-if="character.stains > 0">
-              <span class="stat-label">Flecken</span>
-              <div class="stat-value stat-value--stains">{{ character.stains }}</div>
+          <h2>Konzept & Leveln</h2>
+          <div class="form-grid">
+            <VInput
+              label="Konzept"
+              :model-value="character.concept"
+              @update:model-value="updateTextField('concept', $event as string)"
+              placeholder="Das Konzept deines Charakters…"
+            />
+
+            <div style="display: flex; justify-content: center; align-items: flex-end; flex: 1; gap: 1rem">
+              <VExperienceBox v-model="character" @update-xp="saveExperience" style="flex: 1"/>
+
+              <VButton variant="secondary" @click="showHistory = true">Historie</VButton>
             </div>
           </div>
         </VCard>
       </div>
+
+      <VCard>
+        <h2>Chronik & Geschichte</h2>
+        <div class="chronicle-grid">
+          <VInput
+            label="Chronik"
+            :model-value="character.chronicle"
+            @update:model-value="updateTextField('chronicle', $event as string)"
+            placeholder="Name der Chronik…"
+          />
+          <VInput
+            label="Sire"
+            :model-value="character.sire"
+            @update:model-value="updateTextField('sire', $event as string)"
+            placeholder="Name des Sires…"
+          />
+          <VInput
+            label="Ehrgeiz"
+            :model-value="character.ambition"
+            @update:model-value="updateTextField('ambition', $event as string)"
+            placeholder="Langfristiges Ziel…"
+          />
+          <VInput
+            label="Begehren"
+            :model-value="character.desire"
+            @update:model-value="updateTextField('desire', $event as string)"
+            placeholder="Kurzfristiges Verlangen…"
+          />
+          <VTextarea
+            label="Chronikprinzipien"
+            :model-value="character.chroniclePrinciples"
+            @update:model-value="updateTextField('chroniclePrinciples', $event)"
+            placeholder="Die Prinzipien der Chronik…"
+            :rows="3"
+          />
+          <VTextarea
+            label="Anker & Überzeugungen"
+            :model-value="character.anchorsAndBeliefs"
+            @update:model-value="updateTextField('anchorsAndBeliefs', $event)"
+            placeholder="Wichtige Überzeugungen und Anker…"
+            :rows="3"
+          />
+          <VTextarea
+            class="full-width"
+            label="Hintergrundgeschichte"
+            :model-value="character.backstory"
+            @update:model-value="updateTextField('backstory', $event)"
+            placeholder="Die Geschichte deines Charakters…"
+            :rows="6"
+          />
+        </div>
+      </VCard>
 
       <VCard v-if="character.attributes && character.attributes.length > 0">
         <h2>Attribute</h2>
@@ -216,7 +620,7 @@ function getDisciplineName(disciplineId: string): string {
               <div class="skill-info">
                 <span class="skill-name">{{ skillLabels[skill.key] || skill.key }}</span>
                 <span v-if="skill.specialization && skill.specialization.length > 0" class="skill-spec">
-                  {{ skill.specialization.join(', ') }}
+                  {{ skill.specialization.join(", ") }}
                 </span>
               </div>
               <VDotRating :model-value="skill.value" :readonly="true" />
@@ -230,8 +634,37 @@ function getDisciplineName(disciplineId: string): string {
         <div class="disciplines-list">
           <div v-for="disc in character.disciplineSelections" :key="disc.id" class="disc-item">
             <div class="disc-header">
-              <span class="disc-name">{{ getDisciplineName(disc.disciplineID) }}</span>
+              <div class="disc-title">
+                <span class="disc-name">{{ getDisciplineName(disc.disciplineID) }}</span>
+              </div>
               <VDotRating :model-value="disc.currentLevel" :readonly="true" />
+            </div>
+
+            <div v-if="disc.abilities && disc.abilities.length > 0" class="disc-abilities">
+              <div
+                v-for="ability in getSelectedAbilities(disc.disciplineID, disc.abilities)"
+                :key="ability.id"
+                type="button"
+                class="ability-item"
+              >
+                <div class="ability-header">
+                  <span class="ability-level">{{ ability.level }}</span>
+                  <span class="ability-name">{{ ability.name }}</span>
+                  <span class="ability-pill">Details</span>
+                </div>
+                <p class="ability-summary" v-if="ability.summary">{{ ability.summary }}</p>
+                <div class="ability-details">
+                  <span v-if="ability.costs" class="ability-detail">
+                    <strong>Kosten:</strong> {{ ability.costs }}
+                  </span>
+                  <span v-if="ability.duration" class="ability-detail">
+                    <strong>Dauer:</strong> {{ ability.duration }}
+                  </span>
+                  <span v-if="ability.diceSupplies" class="ability-detail">
+                    <strong>Würfelpool:</strong> {{ ability.diceSupplies }}
+                  </span>
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -244,17 +677,32 @@ function getDisciplineName(disciplineId: string): string {
             <h3>{{ getTraitPackName(usage.packID) }}</h3>
             <div class="traits-list">
               <div v-for="trait in usage.traits" :key="trait.id" class="trait-item">
-                <span class="trait-name">{{ getTraitName(usage.packID, trait.traitID) }}</span>
+                <div class="trait-main">
+                  <span class="trait-name">{{ getTraitInfo(usage.packID, trait.traitID).name }}</span>
+                  <span v-if="getTraitInfo(usage.packID, trait.traitID).isFlaw" class="trait-badge trait-badge--flaw">
+                    Schwäche
+                  </span>
+                </div>
                 <span class="trait-level" v-if="trait.customLevel">{{ trait.customLevel }}</span>
+              </div>
+
+              <div v-for="flaw in usage.flawTraits" :key="flaw.id" class="trait-item trait-item--flaw">
+                <div class="trait-main">
+                  <span class="trait-name">{{ getTraitInfo(usage.packID, flaw.traitID).name }}</span>
+                  <span class="trait-badge trait-badge--flaw">Schwäche</span>
+                </div>
+                <span class="trait-level trait-level--flaw" v-if="flaw.customLevel">{{ flaw.customLevel }}</span>
               </div>
             </div>
           </div>
         </div>
       </VCard>
 
-      <VCard v-if="character.bloodRituals && character.bloodRituals.length > 0">
+      <VCard v-if="hasBloodSorcery">
         <h2>Blutrituale</h2>
-        <div class="rituals-list">
+        <p class="section-info">Verfügbar bis Level {{ bloodSorceryLevel }}</p>
+
+        <div class="rituals-list" v-if="character.bloodRituals && character.bloodRituals.length > 0">
           <div v-for="ritual in character.bloodRituals" :key="ritual.id" class="ritual-item">
             <div class="ritual-header">
               <span class="ritual-name">{{ ritual.name }}</span>
@@ -263,11 +711,21 @@ function getDisciplineName(disciplineId: string): string {
             <p class="ritual-desc">{{ ritual.description }}</p>
           </div>
         </div>
+
+        <div v-else-if="availableBloodRituals.length > 0" class="rituals-available">
+          <p class="empty-note">Keine Rituale ausgewählt. {{ availableBloodRituals.length }} Rituale verfügbar.</p>
+        </div>
+
+        <div v-else class="empty-note">
+          <p>Keine Blutrituale verfügbar.</p>
+        </div>
       </VCard>
 
-      <VCard v-if="character.oblivionCeremonies && character.oblivionCeremonies.length > 0">
-        <h2>Oblivion Zeremonien</h2>
-        <div class="rituals-list">
+      <VCard v-if="hasOblivion">
+        <h2>Vergessenheitszeremonien</h2>
+        <p class="section-info">Verfügbar bis Level {{ oblivionLevel }}</p>
+
+        <div class="rituals-list" v-if="character.oblivionCeremonies && character.oblivionCeremonies.length > 0">
           <div v-for="ceremony in character.oblivionCeremonies" :key="ceremony.id" class="ritual-item">
             <div class="ritual-header">
               <span class="ritual-name">{{ ceremony.name }}</span>
@@ -276,23 +734,42 @@ function getDisciplineName(disciplineId: string): string {
             <p class="ritual-desc">{{ ceremony.summary }}</p>
           </div>
         </div>
-      </VCard>
 
-      <VCard v-if="character.notes">
-        <h2>Notizen</h2>
-        <div class="notes-content">
-          {{ character.notes }}
+        <div v-else-if="availableOblivionCeremonies.length > 0" class="rituals-available">
+          <p class="empty-note">Keine Zeremonien ausgewählt. {{ availableOblivionCeremonies.length }} Zeremonien verfügbar.</p>
+        </div>
+
+        <div v-else class="empty-note">
+          <p>Keine Vergessenheitszeremonien verfügbar.</p>
         </div>
       </VCard>
+
+      <VInventoryBox
+        v-model="character"
+        @update-inventory="(inv) => saveField('inventory', inv)"
+      />
+
+      <VCard>
+        <h2>Notizen</h2>
+        <VTextarea
+          :model-value="character.notes"
+          @update:model-value="updateTextField('notes', $event)"
+          placeholder="Persönliche Notizen zum Charakter…"
+          :rows="6"
+        />
+      </VCard>
     </div>
+
+    <div v-if="isSaving" class="save-indicator">Speichert…</div>
   </div>
 
   <div v-else class="character-view character-view--loading">
     <p>Charakter nicht gefunden.</p>
-    <VButton variant="primary" @click="router.push('/')">
-      Zur Übersicht
-    </VButton>
+    <VButton variant="primary" @click="router.push('/')">Zur Übersicht</VButton>
   </div>
+
+  <VLevelHistoryModal v-model="showHistory" :character="character as any" />
+  <VCharacterViewersModal v-model="showViewers" :character="character as any" :readonly="false" />
 </template>
 
 <style scoped lang="scss">
@@ -302,6 +779,7 @@ function getDisciplineName(disciplineId: string): string {
   padding: $s-6;
   max-width: 1120px;
   margin: 0 auto;
+  position: relative;
 
   &__header {
     display: flex;
@@ -326,6 +804,13 @@ function getDisciplineName(disciplineId: string): string {
         font-style: italic;
         color: $text-2;
       }
+    }
+
+    .header-right {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      gap: $s-3;
     }
   }
 
@@ -356,6 +841,107 @@ function getDisciplineName(disciplineId: string): string {
   }
 }
 
+.avatar-container {
+  width: 80px;
+  height: 80px;
+}
+
+.avatar-upload {
+  display: block;
+  width: 100%;
+  height: 100%;
+  position: relative;
+  cursor: pointer;
+  border-radius: $r-md;
+  overflow: hidden;
+}
+
+.avatar-image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: top;
+}
+
+.avatar-placeholder {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: $bg-2;
+  border: 2px solid $border;
+  font-size: 2rem;
+  font-weight: 700;
+  font-family: $font-head;
+  color: $text-1;
+}
+
+.avatar-input {
+  display: none;
+}
+
+.avatar-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity $t-fast $ease;
+
+  span {
+    font-size: 0.75rem;
+    color: $text-0;
+    text-transform: uppercase;
+  }
+}
+
+.avatar-upload:hover .avatar-overlay {
+  opacity: 1;
+}
+
+.trackers-section {
+  display: grid;
+  gap: $s-4;
+  grid-template-columns: repeat(2, 1fr);
+}
+
+.tracker-card {
+  h2 {
+    margin: 0;
+  }
+}
+
+.tracker-card__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: $s-3;
+  margin-bottom: $s-3;
+}
+
+.tracker-card__meta {
+  font-family: $font-head;
+  color: rgba($red-0, 0.9);
+  font-weight: 700;
+}
+
+.tracker-info {
+  margin-bottom: $s-3;
+}
+
+.tracker-info--row {
+  display: grid;
+  gap: $s-2;
+}
+
+.tracker-formula {
+  font-size: 0.82rem;
+  color: $text-2;
+}
+
 .content-grid {
   display: grid;
   gap: $s-5;
@@ -382,63 +968,75 @@ function getDisciplineName(disciplineId: string): string {
   }
 }
 
-.stats-grid {
+.form-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
   gap: $s-4;
 }
 
-.stat-item {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
+.form-field {
+  display: grid;
   gap: $s-2;
 }
 
-.stat-label {
+.field-label {
+  font-size: 0.95rem;
+  color: rgba(255, 255, 255, 0.72);
+}
+
+.resonance-select {
+  display: flex;
+  flex-wrap: wrap;
+  gap: $s-2;
+}
+
+.resonance-option {
+  padding: $s-2 $s-3;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid $border;
+  border-radius: 999px;
+  color: $text-1;
+  cursor: pointer;
   font-size: 0.85rem;
-  color: $text-2;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-}
+  transition: transform $t-fast $ease, border-color $t-fast $ease;
 
-.stat-value {
-  font-size: 1.5rem;
-  font-weight: 700;
-  font-family: $font-head;
-  color: $text-0;
-  padding: $s-2 $s-4;
-  border-radius: $r-md;
-  background: rgba(255, 255, 255, 0.04);
-
-  &--hunger {
-    background: rgba(255, 59, 84, 0.12);
-    color: $red-0;
+  &:hover {
+    transform: translateY(-1px);
+    border-color: rgba($red-0, 0.35);
+    color: $text-0;
   }
 
-  &--potency {
-    background: rgba(140, 12, 27, 0.2);
-    color: $red-1;
-  }
-
-  &--stains {
-    background: rgba(140, 12, 27, 0.15);
-    color: $text-2;
+  &--active {
+    background: rgba($red-0, 0.12);
+    border-color: rgba($red-0, 0.55);
+    color: rgba($red-0, 0.95);
   }
 }
 
-.attributes-grid, .skills-grid {
+.chronicle-grid {
+  display: grid;
+  gap: $s-4;
+  grid-template-columns: repeat(2, 1fr);
+
+  .full-width {
+    grid-column: 1 / -1;
+  }
+}
+
+.attributes-grid,
+.skills-grid {
   display: grid;
   gap: $s-5;
   grid-template-columns: repeat(3, 1fr);
 }
 
-.attr-category, .skill-category {
+.attr-category,
+.skill-category {
   display: grid;
   gap: $s-3;
 }
 
-.attr-row, .skill-row {
+.attr-row,
+.skill-row {
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -446,7 +1044,8 @@ function getDisciplineName(disciplineId: string): string {
   padding: $s-1 0;
 }
 
-.attr-name, .skill-name {
+.attr-name,
+.skill-name {
   font-weight: 500;
   color: $text-0;
 }
@@ -454,23 +1053,22 @@ function getDisciplineName(disciplineId: string): string {
 .skill-info {
   display: flex;
   flex-direction: column;
-  gap: 0;
   flex: 1;
 }
 
 .skill-spec {
   font-size: 0.8rem;
-  color: $red-0;
+  color: rgba($red-0, 0.95);
   font-style: italic;
 }
 
 .disciplines-list {
   display: grid;
-  gap: $s-3;
+  gap: $s-4;
 }
 
 .disc-item {
-  padding: $s-3;
+  padding: $s-4;
   border-radius: $r-md;
   background: rgba(255, 255, 255, 0.02);
   border: 1px solid $border;
@@ -479,13 +1077,111 @@ function getDisciplineName(disciplineId: string): string {
 .disc-header {
   display: flex;
   justify-content: space-between;
-  align-items: center;
+  align-items: flex-start;
+  margin-bottom: $s-3;
+  gap: $s-3;
+}
+
+.disc-title {
+  display: flex;
+  flex-direction: column;
+  gap: $s-1;
 }
 
 .disc-name {
-  font-weight: 600;
+  font-weight: 700;
   color: $text-0;
   font-family: $font-head;
+  font-size: 1.1rem;
+}
+
+.disc-summary {
+  font-size: 0.85rem;
+  color: $text-2;
+  font-style: italic;
+}
+
+.disc-abilities {
+  display: grid;
+  gap: $s-3;
+  margin-top: $s-3;
+  padding-top: $s-3;
+  border-top: 1px solid $border;
+}
+
+.ability-item {
+  width: 100%;
+  text-align: left;
+  padding: $s-3;
+  border-radius: $r-md;
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  background: rgba(255, 255, 255, 0.03);
+  cursor: pointer;
+  transition: transform $t-fast $ease, border-color $t-fast $ease;
+
+  &:hover {
+    transform: translateY(-1px);
+    border-color: rgba($red-0, 0.28);
+  }
+}
+
+.ability-header {
+  display: flex;
+  align-items: center;
+  gap: $s-2;
+  margin-bottom: $s-2;
+}
+
+.ability-level {
+  width: 26px;
+  height: 26px;
+  display: grid;
+  place-items: center;
+  background: rgba($red-0, 0.95);
+  color: white;
+  font-weight: 800;
+  font-size: 0.85rem;
+  border-radius: 999px;
+  box-shadow: 0 10px 28px rgba($red-0, 0.18);
+}
+
+.ability-name {
+  font-weight: 700;
+  color: $text-0;
+  flex: 1;
+}
+
+.ability-pill {
+  font-size: 0.75rem;
+  padding: 0.25rem 0.55rem;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: $text-1;
+}
+
+.ability-summary {
+  margin: 0 0 $s-2;
+  font-size: 0.9rem;
+  color: $text-1;
+  line-height: 1.5;
+}
+
+.ability-details {
+  display: flex;
+  flex-wrap: wrap;
+  gap: $s-2;
+}
+
+.ability-detail {
+  font-size: 0.8rem;
+  color: $text-2;
+  padding: $s-1 $s-2;
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: $r-sm;
+
+  strong {
+    color: $text-1;
+  }
 }
 
 .traits-section {
@@ -513,6 +1209,16 @@ function getDisciplineName(disciplineId: string): string {
   padding: $s-2 $s-3;
   border-radius: $r-sm;
   background: rgba(255, 255, 255, 0.02);
+
+  &--flaw {
+    background: rgba($red-0, 0.08);
+  }
+}
+
+.trait-main {
+  display: flex;
+  align-items: center;
+  gap: $s-2;
 }
 
 .trait-name {
@@ -520,13 +1226,36 @@ function getDisciplineName(disciplineId: string): string {
   color: $text-0;
 }
 
+.trait-badge {
+  font-size: 0.7rem;
+  padding: 2px $s-2;
+  border-radius: $r-sm;
+  text-transform: uppercase;
+  font-weight: 700;
+
+  &--flaw {
+    background: rgba($red-0, 0.2);
+    color: rgba($red-0, 0.95);
+  }
+}
+
 .trait-level {
   padding: $s-1 $s-2;
   border-radius: $r-sm;
-  background: rgba(255, 59, 84, 0.12);
-  color: $red-0;
-  font-weight: 600;
+  background: rgba($red-0, 0.12);
+  color: rgba($red-0, 0.95);
+  font-weight: 700;
   font-size: 0.85rem;
+
+  &--flaw {
+    background: rgba($red-0, 0.2);
+  }
+}
+
+.section-info {
+  font-size: 0.85rem;
+  color: $text-2;
+  margin-bottom: $s-3;
 }
 
 .rituals-list {
@@ -545,11 +1274,12 @@ function getDisciplineName(disciplineId: string): string {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: $s-3;
   margin-bottom: $s-2;
 }
 
 .ritual-name {
-  font-weight: 600;
+  font-weight: 700;
   color: $text-0;
   font-family: $font-head;
 }
@@ -559,7 +1289,7 @@ function getDisciplineName(disciplineId: string): string {
   border-radius: $r-sm;
   background: rgba(255, 255, 255, 0.06);
   font-size: 0.85rem;
-  font-weight: 600;
+  font-weight: 700;
   color: $text-1;
 }
 
@@ -570,10 +1300,29 @@ function getDisciplineName(disciplineId: string): string {
   line-height: 1.5;
 }
 
-.notes-content {
-  white-space: pre-wrap;
+.empty-note {
+  color: $text-2;
+  font-size: 0.9rem;
+  font-style: italic;
+}
+
+.save-indicator {
+  position: fixed;
+  bottom: $s-4;
+  right: $s-4;
+  padding: $s-2 $s-4;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid $border;
+  border-radius: $r-md;
+  font-size: 0.85rem;
   color: $text-1;
-  line-height: 1.6;
+  backdrop-filter: blur(10px);
+}
+
+@media (max-width: 900px) {
+  .trackers-section {
+    grid-template-columns: repeat(2, 1fr);
+  }
 }
 
 @media (max-width: 768px) {
@@ -581,7 +1330,18 @@ function getDisciplineName(disciplineId: string): string {
     grid-template-columns: 1fr;
   }
 
-  .attributes-grid, .skills-grid {
+  .chronicle-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .attributes-grid,
+  .skills-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 600px) {
+  .trackers-section {
     grid-template-columns: 1fr;
   }
 }
@@ -593,7 +1353,18 @@ function getDisciplineName(disciplineId: string): string {
     &__header {
       flex-direction: column;
       align-items: stretch;
+
+      .header-right {
+        flex-direction: row;
+        justify-content: space-between;
+        align-items: center;
+      }
     }
+  }
+
+  .avatar-container {
+    width: 68px;
+    height: 68px;
   }
 }
 </style>

@@ -55,15 +55,7 @@ export const useCharactersStore = defineStore('characters', {
     },
 
     async updateCharacter(id: string, req: V5CharacterUpdateRequest) {
-      const char = await updateCharacter(id, req)
-      if (char) {
-        this.currentCharacter = char
-        const idx = this.characters.findIndex(c => c.id === id)
-        if (idx !== -1) {
-          this.characters[idx] = char
-        }
-      }
-      return char
+      await updateCharacter(id, req)
     },
 
     async deleteCharacter(id: string) {

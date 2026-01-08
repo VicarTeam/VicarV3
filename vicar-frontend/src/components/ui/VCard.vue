@@ -39,6 +39,7 @@ withDefaults(
 .card--interactive {
   transition: transform var(--t-med, 220ms) var(--ease, cubic-bezier(.2,.8,.2,1)),
   border-color var(--t-med, 220ms) var(--ease, cubic-bezier(.2,.8,.2,1));
+  cursor: pointer;
 
   &:hover {
     transform: translateY(-2px);

@@ -22,27 +22,14 @@ export async function deleteCharacter(id: string): Promise<boolean> {
   return !!res
 }
 
-export async function updateCharacterAttribute(characterId: string, attrId: string, value: number): Promise<boolean> {
-  const res = await PATCH(`/characters/${characterId}/attributes/${attrId}`, { value })
+export type AddViewerRequest = { userID: string }
+
+export async function addCharacterViewer(characterId: string, userId: string): Promise<boolean> {
+  const res = await POST(`/characters/${characterId}/viewers`, { userID: userId } satisfies AddViewerRequest)
   return !!res
 }
 
-export async function updateCharacterSkill(characterId: string, skillId: string, value: number, specializations?: string[]): Promise<boolean> {
-  const res = await PATCH(`/characters/${characterId}/skills/${skillId}`, { value, specializations })
-  return !!res
-}
-
-export async function addCharacterDiscipline(characterId: string, disciplineID: string): Promise<boolean> {
-  const res = await POST(`/characters/${characterId}/disciplines`, { disciplineID })
-  return !!res
-}
-
-export async function updateCharacterDiscipline(characterId: string, disciplineId: string, data: { points?: number; currentLevel?: number }): Promise<boolean> {
-  const res = await PATCH(`/characters/${characterId}/disciplines/${disciplineId}`, data)
-  return !!res
-}
-
-export async function deleteCharacterDiscipline(characterId: string, disciplineId: string): Promise<boolean> {
-  const res = await DELETE(`/characters/${characterId}/disciplines/${disciplineId}`)
+export async function removeCharacterViewer(characterId: string, userId: string): Promise<boolean> {
+  const res = await DELETE(`/characters/${characterId}/viewers/${userId}`)
   return !!res
 }

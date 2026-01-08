@@ -117,6 +117,7 @@ function onCreate(characterId: string) {
     height: 64px;
     border-radius: 50%;
     object-fit: cover;
+    object-position: top;
     flex-shrink: 0;
 
     &--placeholder {

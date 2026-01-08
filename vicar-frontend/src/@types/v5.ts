@@ -1,5 +1,7 @@
+import type {User} from "@/@types/user.ts";
+
 export type GenerationEra = 'children' | 'newborn' | 'ancillae' | 'older' | 'elder' | 'cainesinheritance'
-export type Resonance = 'choleric' | 'melancholic' | 'phlegmatic' | 'sanguine' | 'animalblood'
+export type Resonance = 'choleric' | 'melancholic' | 'phlegmatic' | 'sanguine' | 'animalblood' | ''
 export type CategoryKey = 'physical' | 'social' | 'mental'
 export type AttributeKey = 'str' | 'dex' | 'sta' | 'cha' | 'man' | 'com' | 'int' | 'wit' | 'res'
 export type SkillKey = 'ath' | 'bra' | 'cra' | 'dri' | 'fir' | 'mel' | 'lar' | 'ste' | 'sur' |
@@ -170,8 +172,7 @@ export interface V5OblivionCeremony {
 export interface V5LevelChange {
   id: string
   characterID: string
-  type: 'attribute' | 'skill' | 'discipline' | 'trait' | 'flaw' | 'blood_potency' |
-    'blood_ritual' | 'specialization' | 'unknown'
+  type: 'attribute' | 'skill' | 'discipline' | 'trait' | 'flaw' | 'blood_potency' | 'specialization' | 'unknown'
   date: string
   text: string
   expUsed: number
@@ -200,9 +201,7 @@ export interface V5CharacterInternalData {
     bloodPotencyChange?: number
     specializations?: { skillKey: string; specialization: string }[]
     disciplinePoints?: { disciplineID: string; points: number }[]
-    // Trait bonuses from predator type (add_merit, add_background, add_flaw)
     traits?: { packID: string; traitID: string; level: number; suffix?: string; isFlaw?: boolean }[]
-    // spend_points_between actions (for tracking predator-given points)
     spendPointsBetween?: {
       actionId: string
       type: 'backgrounds' | 'flaws'
@@ -224,6 +223,7 @@ export interface V5CharacterInternalData {
 export interface V5Character {
   userID: string
   id: string
+  isOwner?: boolean
   avatar?: string
   name: string
   notes: string
@@ -258,6 +258,7 @@ export interface V5Character {
   version: number
   skillSpreadType: SkillSpreadType
   internalData: V5CharacterInternalData
+  inventory: V5Inventory
   books: V5Book[]
   categories: V5CharacterCategory[]
   attributes: V5CharacterAttribute[]
@@ -267,6 +268,24 @@ export interface V5Character {
   bloodRituals: V5BloodRitual[]
   oblivionCeremonies: V5OblivionCeremony[]
   levelHistory: V5LevelChange[]
+  viewers: User[]
+}
+
+export type InventorySide = "carriedItems" | "ownedItems"
+
+export type V5InventoryItem = {
+  id: string
+  name: string
+  description: string
+  amount: number
+  category?: string
+}
+
+export type V5Inventory = {
+  cash: number
+  bank: number
+  carriedItems: V5InventoryItem[]
+  ownedItems: V5InventoryItem[]
 }
 
 export interface V5Trait {
