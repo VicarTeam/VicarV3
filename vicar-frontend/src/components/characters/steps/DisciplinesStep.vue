@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, computed, watch } from 'vue'
+import {ref, onMounted, computed, watch, nextTick} from 'vue'
 import { useV5DataStore } from '@/stores/v5data'
 import VCard from '@/components/ui/VCard.vue'
 import VButton from '@/components/ui/VButton.vue'
