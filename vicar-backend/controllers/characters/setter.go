@@ -249,6 +249,11 @@ func updateCharacter(c *fiber.Ctx) error {
 		changes["books"] = bookIDs
 	}
 
+	if dto.InternalData != nil {
+		character.InternalData = *dto.InternalData
+		changes["internalData"] = *dto.InternalData
+	}
+
 	tx := db.DB.Begin()
 	defer tx.Rollback()
 
@@ -257,7 +262,9 @@ func updateCharacter(c *fiber.Ctx) error {
 	}
 
 	if dto.Attributes != nil && len(dto.Attributes) > 0 {
-		tx.Where("character_id = ?", character.ID).Delete(&entities.V5CharacterAttribute{})
+		if err := tx.Where("character_id = ?", character.ID).Delete(&entities.V5CharacterAttribute{}).Error; err != nil {
+			return err
+		}
 
 		for _, attr := range dto.Attributes {
 			newAttr := &entities.V5CharacterAttribute{
@@ -276,7 +283,9 @@ func updateCharacter(c *fiber.Ctx) error {
 	}
 
 	if dto.Skills != nil && len(dto.Skills) > 0 {
-		tx.Where("character_id = ?", character.ID).Delete(&entities.V5CharacterSkill{})
+		if err := tx.Where("character_id = ?", character.ID).Delete(&entities.V5CharacterSkill{}).Error; err != nil {
+			return err
+		}
 
 		for _, skill := range dto.Skills {
 			newSkill := &entities.V5CharacterSkill{
@@ -291,6 +300,40 @@ func updateCharacter(c *fiber.Ctx) error {
 				return err
 			}
 		}
+	}
+
+	if dto.DisciplineSelections != nil && len(dto.DisciplineSelections) > 0 {
+		if err := tx.Where("character_id = ?", character.ID).Delete(&entities.V5CharacterDisciplineSelection{}).Error; err != nil {
+			return err
+		}
+
+		for _, selection := range dto.DisciplineSelections {
+			newSelection := &entities.V5CharacterDisciplineSelection{
+				CharacterID:  character.ID,
+				DisciplineID: selection.DisciplineID,
+				Points:       selection.Points,
+				CurrentLevel: selection.CurrentLevel,
+			}
+
+			if err := tx.Create(newSelection).Error; err != nil {
+				return err
+			}
+
+			for _, ability := range selection.Abilities {
+				newAbility := &entities.V5CharacterDisciplineAbility{
+					SelectionID: newSelection.ID,
+					AbilityID:   ability.AbilityID,
+					Level:       ability.Level,
+					UsedLevel:   ability.UsedLevel,
+				}
+
+				if err := tx.Create(newAbility).Error; err != nil {
+					return err
+				}
+			}
+		}
+
+		changes["disciplineSelections"] = dto.DisciplineSelections
 	}
 
 	if err := tx.Commit().Error; err != nil {
@@ -329,270 +372,6 @@ func deleteCharacter(c *fiber.Ctx) error {
 	if err := db.DB.Delete(character).Error; err != nil {
 		return err
 	}
-
-	return c.SendStatus(fiber.StatusNoContent)
-}
-
-func updateAttribute(c *fiber.Ctx) error {
-	user := auth.Extract(c)
-	if user == nil {
-		return fiber.ErrUnauthorized
-	}
-
-	charIDStr := c.Params("id")
-	charID, err := uuid.Parse(charIDStr)
-	if err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid character ID"})
-	}
-
-	attrIDStr := c.Params("attrId")
-	attrID, err := uuid.Parse(attrIDStr)
-	if err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid attribute ID"})
-	}
-
-	if _, err := RequireOwner(c, user, charID); err != nil {
-		return err
-	}
-
-	var dto UpdateAttributeDto
-	if err := c.BodyParser(&dto); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request payload"})
-	}
-
-	if err := dto.Validate(); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
-	}
-
-	attribute := &entities.V5CharacterAttribute{}
-	if err := db.DB.Where("id = ? AND character_id = ?", attrID, charID).First(attribute).Error; err != nil {
-		return err
-	}
-
-	attribute.Value = dto.Value
-	if err := db.DB.Save(attribute).Error; err != nil {
-		return err
-	}
-
-	sync.SyncCharacterChanges(charID.String(), fiber.Map{
-		"path": "attributes." + string(attribute.Key),
-		"value": fiber.Map{
-			"id":       attribute.ID,
-			"category": attribute.Category,
-			"key":      attribute.Key,
-			"value":    attribute.Value,
-		},
-	})
-
-	return c.SendStatus(fiber.StatusNoContent)
-}
-
-func updateSkill(c *fiber.Ctx) error {
-	user := auth.Extract(c)
-	if user == nil {
-		return fiber.ErrUnauthorized
-	}
-
-	charIDStr := c.Params("id")
-	charID, err := uuid.Parse(charIDStr)
-	if err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid character ID"})
-	}
-
-	skillIDStr := c.Params("skillId")
-	skillID, err := uuid.Parse(skillIDStr)
-	if err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid skill ID"})
-	}
-
-	if _, err := RequireOwner(c, user, charID); err != nil {
-		return err
-	}
-
-	var dto UpdateSkillDto
-	if err := c.BodyParser(&dto); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request payload"})
-	}
-
-	if err := dto.Validate(); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
-	}
-
-	skill := &entities.V5CharacterSkill{}
-	if err := db.DB.Where("id = ? AND character_id = ?", skillID, charID).First(skill).Error; err != nil {
-		return err
-	}
-
-	skill.Value = dto.Value
-	skill.Specialization = dto.Specialization
-	if err := db.DB.Save(skill).Error; err != nil {
-		return err
-	}
-
-	sync.SyncCharacterChanges(charID.String(), fiber.Map{
-		"path": "skills." + string(skill.Key),
-		"value": fiber.Map{
-			"id":             skill.ID,
-			"category":       skill.Category,
-			"key":            skill.Key,
-			"value":          skill.Value,
-			"specialization": skill.Specialization,
-		},
-	})
-
-	return c.SendStatus(fiber.StatusNoContent)
-}
-
-func addDisciplineSelection(c *fiber.Ctx) error {
-	user := auth.Extract(c)
-	if user == nil {
-		return fiber.ErrUnauthorized
-	}
-
-	charIDStr := c.Params("id")
-	charID, err := uuid.Parse(charIDStr)
-	if err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid character ID"})
-	}
-
-	if _, err := RequireOwner(c, user, charID); err != nil {
-		return err
-	}
-
-	var dto CreateDisciplineSelectionDto
-	if err := c.BodyParser(&dto); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request payload"})
-	}
-
-	var discipline entities.V5Discipline
-	if err := db.DB.First(&discipline, dto.DisciplineID).Error; err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Discipline not found"})
-	}
-
-	selection := &entities.V5CharacterDisciplineSelection{
-		CharacterID:  charID,
-		DisciplineID: dto.DisciplineID,
-		Points:       0,
-		CurrentLevel: 0,
-	}
-
-	if err := db.DB.Create(selection).Error; err != nil {
-		return err
-	}
-
-	db.DB.Preload("Discipline").First(selection, selection.ID)
-
-	sync.SyncCharacterChanges(charID.String(), fiber.Map{
-		"path": "disciplines.add",
-		"value": fiber.Map{
-			"id": selection.ID,
-			"discipline": fiber.Map{
-				"id":   discipline.ID,
-				"name": discipline.Name,
-			},
-			"points":       0,
-			"currentLevel": 0,
-			"abilities":    []fiber.Map{},
-		},
-	})
-
-	return c.Status(fiber.StatusCreated).JSON(fiber.Map{"id": selection.ID})
-}
-
-func updateDisciplineSelection(c *fiber.Ctx) error {
-	user := auth.Extract(c)
-	if user == nil {
-		return fiber.ErrUnauthorized
-	}
-
-	charIDStr := c.Params("id")
-	charID, err := uuid.Parse(charIDStr)
-	if err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid character ID"})
-	}
-
-	discIDStr := c.Params("disciplineId")
-	discID, err := uuid.Parse(discIDStr)
-	if err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid discipline ID"})
-	}
-
-	if _, err := RequireOwner(c, user, charID); err != nil {
-		return err
-	}
-
-	var dto UpdateDisciplineSelectionDto
-	if err := c.BodyParser(&dto); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request payload"})
-	}
-
-	if err := dto.Validate(); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
-	}
-
-	selection := &entities.V5CharacterDisciplineSelection{}
-	if err := db.DB.Where("id = ? AND character_id = ?", discID, charID).First(selection).Error; err != nil {
-		return err
-	}
-
-	if dto.Points != nil {
-		selection.Points = *dto.Points
-	}
-	if dto.CurrentLevel != nil {
-		selection.CurrentLevel = *dto.CurrentLevel
-	}
-
-	if err := db.DB.Save(selection).Error; err != nil {
-		return err
-	}
-
-	sync.SyncCharacterChanges(charID.String(), fiber.Map{
-		"path": "disciplines." + discID.String(),
-		"value": fiber.Map{
-			"id":           selection.ID,
-			"points":       selection.Points,
-			"currentLevel": selection.CurrentLevel,
-		},
-	})
-
-	return c.SendStatus(fiber.StatusNoContent)
-}
-
-func deleteDisciplineSelection(c *fiber.Ctx) error {
-	user := auth.Extract(c)
-	if user == nil {
-		return fiber.ErrUnauthorized
-	}
-
-	charIDStr := c.Params("id")
-	charID, err := uuid.Parse(charIDStr)
-	if err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid character ID"})
-	}
-
-	discIDStr := c.Params("disciplineId")
-	discID, err := uuid.Parse(discIDStr)
-	if err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid discipline ID"})
-	}
-
-	if _, err := RequireOwner(c, user, charID); err != nil {
-		return err
-	}
-
-	selection := &entities.V5CharacterDisciplineSelection{}
-	if err := db.DB.Where("id = ? AND character_id = ?", discID, charID).First(selection).Error; err != nil {
-		return err
-	}
-
-	if err := db.DB.Delete(selection).Error; err != nil {
-		return err
-	}
-
-	sync.SyncCharacterChanges(charID.String(), fiber.Map{
-		"path":  "disciplines.remove",
-		"value": discID.String(),
-	})
 
 	return c.SendStatus(fiber.StatusNoContent)
 }

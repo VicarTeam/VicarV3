@@ -73,6 +73,7 @@ func (s *V5CharacterSerializer) Serialize(char entities.V5Character, args ...any
 		"fullCustomization":        char.FullCustomization,
 		"version":                  char.Version,
 		"skillSpreadType":          char.SkillSpreadType,
+		"internalData":             char.InternalData,
 	}
 
 	if s.IsOwner {
@@ -132,8 +133,9 @@ func serializeBooks(books []entities.V5Book) []fiber.Map {
 	result := make([]fiber.Map, len(books))
 	for i, book := range books {
 		result[i] = fiber.Map{
-			"id":   book.ID,
-			"name": book.Name,
+			"id":         book.ID,
+			"oldVicarID": book.OldVicarID,
+			"name":       book.Name,
 		}
 	}
 	return result
@@ -202,6 +204,8 @@ func serializeDisciplineSelections(selections []entities.V5CharacterDisciplineSe
 	for i, sel := range selections {
 		result[i] = fiber.Map{
 			"id":           sel.ID,
+			"characterID":  sel.CharacterID,
+			"disciplineID": sel.DisciplineID,
 			"discipline":   serializeDiscipline(sel.Discipline),
 			"points":       sel.Points,
 			"currentLevel": sel.CurrentLevel,
@@ -222,10 +226,11 @@ func serializeDisciplineAbilities(abilities []entities.V5CharacterDisciplineAbil
 	result := make([]fiber.Map, len(abilities))
 	for i, ability := range abilities {
 		result[i] = fiber.Map{
-			"id":        ability.ID,
-			"abilityId": ability.AbilityID,
-			"level":     ability.Level,
-			"usedLevel": ability.UsedLevel,
+			"id":          ability.ID,
+			"selectionID": ability.SelectionID,
+			"abilityID":   ability.AbilityID,
+			"level":       ability.Level,
+			"usedLevel":   ability.UsedLevel,
 		}
 	}
 	return result

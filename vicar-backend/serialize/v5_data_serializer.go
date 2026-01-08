@@ -10,10 +10,10 @@ type V5BookSerializer struct{}
 
 func (s *V5BookSerializer) Serialize(book entities.V5Book, args ...any) any {
 	return fiber.Map{
-		"id":          book.ID,
-		"oldVicarID":  book.OldVicarID,
-		"name":        book.Name,
-		"isOfficial":  book.IsOfficial,
+		"id":         book.ID,
+		"oldVicarID": book.OldVicarID,
+		"name":       book.Name,
+		"isOfficial": book.IsOfficial,
 	}
 }
 
@@ -46,6 +46,7 @@ func (s *V5ClanSerializer) Serialize(clan entities.V5Clan, args ...any) any {
 				"id":         disc.ID,
 				"oldVicarID": disc.OldVicarID,
 				"name":       disc.Name,
+				"summary":    disc.Summary,
 			}
 		}
 		m["disciplines"] = disciplines

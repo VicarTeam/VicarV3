@@ -6,6 +6,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/lib/pq"
+	"gorm.io/datatypes"
 )
 
 type CreateCharacterDto struct {
@@ -98,9 +99,22 @@ type UpdateCharacterDto struct {
 		Category       entities.CategoryKey `json:"category"`
 	}
 
+	DisciplineSelections []struct {
+		DisciplineID uuid.UUID `json:"disciplineID"`
+		Points       int       `json:"points"`
+		CurrentLevel int       `json:"currentLevel"`
+		Abilities    []struct {
+			AbilityID uuid.UUID `json:"abilityID"`
+			Level     int       `json:"level"`
+			UsedLevel int       `json:"usedLevel"`
+		} `json:"abilities"`
+	} `json:"disciplineSelections"`
+
 	Books []struct {
 		ID uuid.UUID `json:"id"`
 	} `json:"books"`
+
+	InternalData *datatypes.JSON `json:"internalData"`
 }
 
 func (dto *UpdateCharacterDto) Validate() error {

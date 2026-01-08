@@ -5,6 +5,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/lib/pq"
+	"gorm.io/datatypes"
 )
 
 type GenerationEra string
@@ -90,6 +91,8 @@ type V5Character struct {
 	Version                  int  `gorm:"type:int;not null;default:2"`
 
 	SkillSpreadType SkillSpreadType `gorm:"type:varchar(32);not null;default:'balanced'"`
+
+	InternalData datatypes.JSON `gorm:"type:jsonb;not null;default:'{}'"`
 
 	Books []V5Book `gorm:"many2many:v5_character_books;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;"`
 

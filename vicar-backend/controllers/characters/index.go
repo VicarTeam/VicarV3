@@ -13,13 +13,6 @@ func Register(api fiber.Router) {
 	characters.Patch("/:id", updateCharacter)
 	characters.Delete("/:id", deleteCharacter)
 
-	characters.Patch("/:id/attributes/:attrId", updateAttribute)
-	characters.Patch("/:id/skills/:skillId", updateSkill)
-
-	characters.Post("/:id/disciplines", addDisciplineSelection)
-	characters.Patch("/:id/disciplines/:disciplineId", updateDisciplineSelection)
-	characters.Delete("/:id/disciplines/:disciplineId", deleteDisciplineSelection)
-
 	characters.Patch("/:id/directory", moveCharacterToDirectory)
 
 	characters.Get("/:id/viewers", getCharacterViewers)
