@@ -4,7 +4,9 @@ import (
 	"vicar-backend/auth"
 	"vicar-backend/db"
 	"vicar-backend/db/entities"
+	"vicar-backend/log"
 	"vicar-backend/sync"
+	"vicar-backend/util"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
@@ -86,6 +88,7 @@ func updateCharacter(c *fiber.Ctx) error {
 
 	var dto UpdateCharacterDto
 	if err := c.BodyParser(&dto); err != nil {
+		log.Error(log.Server, "❌", "Failed to parse update character dto: %v", err)
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request payload"})
 	}
 
@@ -155,11 +158,11 @@ func updateCharacter(c *fiber.Ctx) error {
 
 	if dto.ClanID != nil {
 		character.ClanID = dto.ClanID
-		changes["clanId"] = dto.ClanID
+		changes["clanID"] = dto.ClanID
 	}
 	if dto.PredatorTypeID != nil {
 		character.PredatorTypeID = dto.PredatorTypeID
-		changes["predatorTypeId"] = dto.PredatorTypeID
+		changes["predatorTypeID"] = dto.PredatorTypeID
 	}
 
 	if dto.GenerationEra != nil {
@@ -226,21 +229,71 @@ func updateCharacter(c *fiber.Ctx) error {
 		changes["skillSpreadType"] = *dto.SkillSpreadType
 	}
 
-	if dto.BookIDs != nil && len(dto.BookIDs) > 0 {
+	if dto.Books != nil && len(dto.Books) > 0 {
+		bookIDs := util.MapArray(dto.Books, func(b struct {
+			ID uuid.UUID `json:"id"`
+		}) uuid.UUID {
+			return b.ID
+		})
+
 		var books []entities.V5Book
-		if err := db.DB.Where("id IN ?", dto.BookIDs).Find(&books).Error; err != nil {
+		if err := db.DB.Where("id IN ?", bookIDs).Find(&books).Error; err != nil {
 			return err
 		}
-		if len(books) != len(dto.BookIDs) {
+		if len(books) != len(bookIDs) {
 			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "One or more books not found"})
 		}
 		if err := db.DB.Model(character).Association("Books").Replace(books); err != nil {
 			return err
 		}
-		changes["bookIds"] = dto.BookIDs
+		changes["books"] = bookIDs
 	}
 
-	if err := db.DB.Save(character).Error; err != nil {
+	tx := db.DB.Begin()
+	defer tx.Rollback()
+
+	if err := tx.Save(character).Error; err != nil {
+		return err
+	}
+
+	if dto.Attributes != nil && len(dto.Attributes) > 0 {
+		tx.Where("character_id = ?", character.ID).Delete(&entities.V5CharacterAttribute{})
+
+		for _, attr := range dto.Attributes {
+			newAttr := &entities.V5CharacterAttribute{
+				CharacterID: character.ID,
+				Category:    attr.Category,
+				Key:         attr.Key,
+				Value:       attr.Value,
+			}
+
+			if err := tx.Create(newAttr).Error; err != nil {
+				return err
+			}
+		}
+
+		changes["attributes"] = dto.Attributes
+	}
+
+	if dto.Skills != nil && len(dto.Skills) > 0 {
+		tx.Where("character_id = ?", character.ID).Delete(&entities.V5CharacterSkill{})
+
+		for _, skill := range dto.Skills {
+			newSkill := &entities.V5CharacterSkill{
+				CharacterID:    character.ID,
+				Category:       skill.Category,
+				Key:            skill.Key,
+				Value:          skill.Value,
+				Specialization: skill.Specialization,
+			}
+
+			if err := tx.Create(newSkill).Error; err != nil {
+				return err
+			}
+		}
+	}
+
+	if err := tx.Commit().Error; err != nil {
 		return err
 	}
 

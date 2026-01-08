@@ -2,6 +2,7 @@ package characters
 
 import (
 	"errors"
+	"vicar-backend/db/entities"
 
 	"github.com/google/uuid"
 	"github.com/lib/pq"
@@ -61,8 +62,8 @@ type UpdateCharacterDto struct {
 	Ambition            *string `json:"ambition"`
 	Desire              *string `json:"desire"`
 
-	ClanID         *uuid.UUID `json:"clanId"`
-	PredatorTypeID *uuid.UUID `json:"predatorTypeId"`
+	ClanID         *uuid.UUID `json:"clanID"`
+	PredatorTypeID *uuid.UUID `json:"predatorTypeID"`
 
 	GenerationEra *string `json:"generationEra"`
 	Generation    *int    `json:"generation"`
@@ -78,11 +79,28 @@ type UpdateCharacterDto struct {
 	Willpower       *int           `json:"willpower"`
 	WillpowerDamage pq.StringArray `json:"willpowerDamage"`
 
-	UseAdvancedDisciplines   *bool       `json:"useAdvancedDisciplines"`
-	AllowLearningOfAllPowers *bool       `json:"allowLearningOfAllPowers"`
-	FullCustomization        *bool       `json:"fullCustomization"`
-	SkillSpreadType          *string     `json:"skillSpreadType"`
-	BookIDs                  []uuid.UUID `json:"bookIds"`
+	UseAdvancedDisciplines   *bool   `json:"useAdvancedDisciplines"`
+	AllowLearningOfAllPowers *bool   `json:"allowLearningOfAllPowers"`
+	FullCustomization        *bool   `json:"fullCustomization"`
+	SkillSpreadType          *string `json:"skillSpreadType"`
+
+	Attributes []struct {
+		ID       string                `json:"id"`
+		Value    int                   `json:"value"`
+		Key      entities.AttributeKey `json:"key"`
+		Category entities.CategoryKey  `json:"category"`
+	}
+	Skills []struct {
+		ID             string               `json:"id"`
+		Value          int                  `json:"value"`
+		Specialization pq.StringArray       `json:"specialization"`
+		Key            entities.SkillKey    `json:"key"`
+		Category       entities.CategoryKey `json:"category"`
+	}
+
+	Books []struct {
+		ID uuid.UUID `json:"id"`
+	} `json:"books"`
 }
 
 func (dto *UpdateCharacterDto) Validate() error {

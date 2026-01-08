@@ -37,15 +37,15 @@ type V5CharacterSerializer struct {
 
 func (s *V5CharacterSerializer) Serialize(char entities.V5Character, args ...any) any {
 	m := fiber.Map{
-		"id":       char.ID,
-		"name":     char.Name,
-		"avatar":   char.Avatar,
-		"notes":    char.Notes,
-		"sex":      char.Sex,
-		"concept":  char.Concept,
+		"id":        char.ID,
+		"name":      char.Name,
+		"avatar":    char.Avatar,
+		"notes":     char.Notes,
+		"sex":       char.Sex,
+		"concept":   char.Concept,
 		"chronicle": char.Chronicle,
-		"exp":      char.Exp,
-		"usedExp":  char.UsedExp,
+		"exp":       char.Exp,
+		"usedExp":   char.UsedExp,
 
 		"chroniclePrinciples": char.ChroniclePrinciples,
 		"anchorsAndBeliefs":   char.AnchorsAndBeliefs,
@@ -68,11 +68,11 @@ func (s *V5CharacterSerializer) Serialize(char entities.V5Character, args ...any
 		"willpower":       char.Willpower,
 		"willpowerDamage": char.WillpowerDamage,
 
-		"useAdvancedDisciplines":      char.UseAdavancedDisciplines,
-		"allowLearningOfAllPowers":    char.AllowLearningOfAllPowers,
-		"fullCustomization":           char.FullCustomization,
-		"version":                     char.Version,
-		"skillSpreadType":             char.SkillSpreadType,
+		"useAdvancedDisciplines":   char.UseAdavancedDisciplines,
+		"allowLearningOfAllPowers": char.AllowLearningOfAllPowers,
+		"fullCustomization":        char.FullCustomization,
+		"version":                  char.Version,
+		"skillSpreadType":          char.SkillSpreadType,
 	}
 
 	if s.IsOwner {
@@ -83,12 +83,12 @@ func (s *V5CharacterSerializer) Serialize(char entities.V5Character, args ...any
 		m["directoryId"] = char.DirectoryID
 	}
 
-	if char.Clan != nil {
-		m["clan"] = serializeClan(*char.Clan)
+	if char.ClanID != nil {
+		m["clanID"] = char.ClanID
 	}
 
-	if char.PredatorType != nil {
-		m["predatorType"] = serializePredatorType(*char.PredatorType)
+	if char.PredatorTypeID != nil {
+		m["predatorTypeID"] = char.PredatorTypeID
 	}
 
 	m["books"] = serializeBooks(char.Books)

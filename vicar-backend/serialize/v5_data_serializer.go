@@ -10,9 +10,10 @@ type V5BookSerializer struct{}
 
 func (s *V5BookSerializer) Serialize(book entities.V5Book, args ...any) any {
 	return fiber.Map{
-		"id":         book.ID,
-		"name":       book.Name,
-		"isOfficial": book.IsOfficial,
+		"id":          book.ID,
+		"oldVicarID":  book.OldVicarID,
+		"name":        book.Name,
+		"isOfficial":  book.IsOfficial,
 	}
 }
 
@@ -21,6 +22,7 @@ type V5ClanSerializer struct{}
 func (s *V5ClanSerializer) Serialize(clan entities.V5Clan, args ...any) any {
 	m := fiber.Map{
 		"id":          clan.ID,
+		"oldVicarID":  clan.OldVicarID,
 		"name":        clan.Name,
 		"slogan":      clan.Slogan,
 		"description": clan.Description,
@@ -41,8 +43,9 @@ func (s *V5ClanSerializer) Serialize(clan entities.V5Clan, args ...any) any {
 		disciplines := make([]fiber.Map, len(clan.Disciplines))
 		for i, disc := range clan.Disciplines {
 			disciplines[i] = fiber.Map{
-				"id":   disc.ID,
-				"name": disc.Name,
+				"id":         disc.ID,
+				"oldVicarID": disc.OldVicarID,
+				"name":       disc.Name,
 			}
 		}
 		m["disciplines"] = disciplines
@@ -175,15 +178,14 @@ func (s *V5TraitPackSerializer) Serialize(pack entities.V5TraitPack, args ...any
 
 	if len(pack.PackTraits) > 0 {
 		packTraits := make([]fiber.Map, len(pack.PackTraits))
+		traitSerializer := &V5TraitSerializer{}
 		for i, pt := range pack.PackTraits {
 			packTraits[i] = fiber.Map{
+				"id":      pt.TraitID.String() + "-" + pack.ID.String(),
+				"packID":  pack.ID,
 				"traitId": pt.TraitID,
 				"side":    pt.Side,
-				"trait": fiber.Map{
-					"id":    pt.Trait.ID,
-					"level": pt.Trait.Level,
-					"name":  pt.Trait.Name,
-				},
+				"trait":   traitSerializer.Serialize(pt.Trait),
 			}
 		}
 		m["packTraits"] = packTraits
@@ -195,7 +197,7 @@ func (s *V5TraitPackSerializer) Serialize(pack entities.V5TraitPack, args ...any
 type V5TraitSerializer struct{}
 
 func (s *V5TraitSerializer) Serialize(trait entities.V5Trait, args ...any) any {
-	return fiber.Map{
+	m := fiber.Map{
 		"id":           trait.ID,
 		"level":        trait.Level,
 		"name":         trait.Name,
@@ -206,6 +208,15 @@ func (s *V5TraitSerializer) Serialize(trait entities.V5Trait, args ...any) any {
 		"requirement":  trait.Requirement,
 		"actions":      trait.Actions,
 	}
+
+	if trait.Restriction != nil {
+		m["restriction"] = fiber.Map{
+			"type": trait.Restriction.Type,
+			"data": trait.Restriction.Data,
+		}
+	}
+
+	return m
 }
 
 type V5DisciplineSerializer struct{}
@@ -213,6 +224,7 @@ type V5DisciplineSerializer struct{}
 func (s *V5DisciplineSerializer) Serialize(disc entities.V5Discipline, args ...any) any {
 	m := fiber.Map{
 		"id":         disc.ID,
+		"oldVicarID": disc.OldVicarID,
 		"name":       disc.Name,
 		"summary":    disc.Summary,
 		"note":       disc.Note,
