@@ -204,7 +204,16 @@ function selectTrait(pack: V5TraitPack, trait: V5Trait, level: number) {
   applyTrait(pack, trait.id, level, undefined)
 }
 
-function applyTrait(pack: V5TraitPack, traitId: string, level: number, suffix?: string) {
+// Edit specialization for an existing trait
+function editTraitSuffix(pack: V5TraitPack, trait: V5Trait) {
+  const currentLevel = getSelectedTraitLevel(pack.id, trait.id)
+  const currentSuffix = getSelectedTraitSuffix(pack.id, trait.id)
+  currentSuffixTrait.value = { pack, trait, level: currentLevel ?? trait.level }
+  suffixInput.value = currentSuffix || ''
+  showSuffixModal.value = true
+}
+
+function applyTrait(pack: V5TraitPack, traitId: string, level: number, suffix?: string, isUpdate = false) {
   if (!character.value.traitPackUsages) {
     character.value.traitPackUsages = []
   }
@@ -224,18 +233,32 @@ function applyTrait(pack: V5TraitPack, traitId: string, level: number, suffix?: 
   }
 
   const usage = character.value.traitPackUsages[usageIndex]
-  const traitIndex = usage.traits.findIndex(t => t.traitID === traitId && t.suffix === suffix)
+
+  // For updates (editing suffix), find by traitId only
+  // For new repeatable traits, find by traitId AND suffix
+  const traitIndex = isUpdate
+    ? usage.traits.findIndex(t => t.traitID === traitId)
+    : usage.traits.findIndex(t => t.traitID === traitId && t.suffix === suffix)
 
   if (traitIndex !== -1) {
-    const existingLevel = usage.traits[traitIndex].customLevel
-    if (existingLevel === level) {
-      // Deselect
-      usage.traits.splice(traitIndex, 1)
-    } else {
-      // Update level
+    if (isUpdate) {
+      // Update the suffix and/or level
       usage.traits[traitIndex] = {
         ...usage.traits[traitIndex],
         customLevel: level,
+        suffix: suffix,
+      }
+    } else {
+      const existingLevel = usage.traits[traitIndex].customLevel
+      if (existingLevel === level) {
+        // Deselect
+        usage.traits.splice(traitIndex, 1)
+      } else {
+        // Update level
+        usage.traits[traitIndex] = {
+          ...usage.traits[traitIndex],
+          customLevel: level,
+        }
       }
     }
   } else {
@@ -258,7 +281,9 @@ function confirmSuffix() {
   if (!currentSuffixTrait.value) return
 
   const { pack, trait, level } = currentSuffixTrait.value
-  applyTrait(pack, trait.id, level, suffixInput.value.trim() || undefined)
+  // Check if this trait already exists (we're editing)
+  const isUpdate = isTraitSelected(pack.id, trait.id)
+  applyTrait(pack, trait.id, level, suffixInput.value.trim() || undefined, isUpdate)
 
   showSuffixModal.value = false
   currentSuffixTrait.value = null
@@ -452,17 +477,28 @@ const flawsByPack = computed(() => {
                 </div>
                 <p class="trait-desc">{{ packTrait.trait.description }}</p>
               </div>
-              <div class="trait-levels">
+              <div class="trait-actions">
                 <button
-                  v-for="level in getTraitLevels(pack, packTrait.trait.id)"
-                  :key="level"
+                  v-if="isTraitSelected(pack.id, packTrait.trait.id)"
                   type="button"
-                  class="level-btn"
-                  :class="{ 'level-btn--selected': getSelectedTraitLevel(pack.id, packTrait.trait.id) === level }"
-                  @click="selectTrait(pack, packTrait.trait, level)"
+                  class="suffix-edit-btn"
+                  title="Spezialisierung bearbeiten"
+                  @click.stop="editTraitSuffix(pack, packTrait.trait)"
                 >
-                  {{ level }}
+                  ✎
                 </button>
+                <div class="trait-levels">
+                  <button
+                    v-for="level in getTraitLevels(pack, packTrait.trait.id)"
+                    :key="level"
+                    type="button"
+                    class="level-btn"
+                    :class="{ 'level-btn--selected': getSelectedTraitLevel(pack.id, packTrait.trait.id) === level }"
+                    @click="selectTrait(pack, packTrait.trait, level)"
+                  >
+                    {{ level }}
+                  </button>
+                </div>
               </div>
             </div>
           </div>
@@ -564,17 +600,28 @@ const flawsByPack = computed(() => {
                 </div>
                 <p class="trait-desc">{{ packTrait.trait.description }}</p>
               </div>
-              <div class="trait-levels">
+              <div class="trait-actions">
                 <button
-                  v-for="level in getTraitLevels(pack, packTrait.trait.id)"
-                  :key="level"
+                  v-if="isTraitSelected(pack.id, packTrait.trait.id)"
                   type="button"
-                  class="level-btn"
-                  :class="{ 'level-btn--selected': getSelectedTraitLevel(pack.id, packTrait.trait.id) === level }"
-                  @click="selectTrait(pack, packTrait.trait, level)"
+                  class="suffix-edit-btn"
+                  title="Spezialisierung bearbeiten"
+                  @click.stop="editTraitSuffix(pack, packTrait.trait)"
                 >
-                  {{ level }}
+                  ✎
                 </button>
+                <div class="trait-levels">
+                  <button
+                    v-for="level in getTraitLevels(pack, packTrait.trait.id)"
+                    :key="level"
+                    type="button"
+                    class="level-btn"
+                    :class="{ 'level-btn--selected': getSelectedTraitLevel(pack.id, packTrait.trait.id) === level }"
+                    @click="selectTrait(pack, packTrait.trait, level)"
+                  >
+                    {{ level }}
+                  </button>
+                </div>
               </div>
             </div>
           </div>
@@ -859,10 +906,37 @@ h4 {
   margin: 0;
 }
 
+.trait-actions {
+  display: flex;
+  align-items: center;
+  gap: $s-2;
+  flex-shrink: 0;
+}
+
 .trait-levels {
   display: flex;
   gap: $s-1;
   flex-shrink: 0;
+}
+
+.suffix-edit-btn {
+  width: 28px;
+  height: 28px;
+  border-radius: $r-sm;
+  border: 1px solid $border;
+  background: rgba(255, 255, 255, .02);
+  color: $text-2;
+  cursor: pointer;
+  font-size: 0.85rem;
+  transition: all $t-fast $ease;
+  display: grid;
+  place-items: center;
+
+  &:hover {
+    border-color: $red-0;
+    background: rgba(255, 59, 84, .08);
+    color: $red-0;
+  }
 }
 
 .level-btn {

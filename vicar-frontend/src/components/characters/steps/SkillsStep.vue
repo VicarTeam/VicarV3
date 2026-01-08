@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, watch, onMounted } from 'vue'
+import { ref, computed } from 'vue'
 import VCard from '@/components/ui/VCard.vue'
 import VDotRating from '@/components/characters/VDotRating.vue'
 import type { V5Character, CategoryKey, SkillKey, V5CharacterSkill, SkillSpreadType } from '@/@types/v5'
@@ -48,8 +48,7 @@ const spreadOptions: { label: string; value: SkillSpreadType; distribution: Reco
   { label: 'Spezialist', value: 'specialist', distribution: { 4: 1, 3: 3, 2: 3, 1: 3, 0: 17 } },
 ]
 
-const selectedSpread = ref<SkillSpreadType>('balanced')
-const localSkills = ref<V5CharacterSkill[]>([])
+// Input refs for UI only
 const specializationInputs = ref<Record<string, string>>({})
 
 const freeSpecSkills: { key: SkillKey; label: string }[] = [
@@ -59,58 +58,49 @@ const freeSpecSkills: { key: SkillKey; label: string }[] = [
   { key: 'sci', label: 'Naturwissenschaften' },
 ]
 
+// @ts-ignore
 const freeSpecInputs = ref<Record<SkillKey, string>>({
+// @ts-ignore
   aca: '',
+// @ts-ignore
   cra: '',
+// @ts-ignore
   prf: '',
+// @ts-ignore
   sci: '',
 })
 const freeChoiceSkill = ref<SkillKey | ''>('')
 const freeChoiceSpec = ref('')
 
-function initializeSkills() {
-  const skills: V5CharacterSkill[] = []
-  Object.entries(skillDefinitions).forEach(([category, defs]) => {
-    defs.forEach(def => {
-      const existing = character.value?.skills?.find(
-        s => s.category === category && s.key === def.key
-      )
-      skills.push({
-        id: existing?.id ?? `${category}-${def.key}`,
-        characterID: existing?.characterID ?? '',
-        category: category as CategoryKey,
-        key: def.key,
-        value: existing?.value ?? 0,
-        specialization: existing?.specialization ?? [],
+const localSkills = computed<V5CharacterSkill[]>({
+  get: () => {
+    const skills: V5CharacterSkill[] = []
+    Object.entries(skillDefinitions).forEach(([category, defs]) => {
+      defs.forEach(def => {
+        const existing = character.value?.skills?.find(
+          s => s.category === category && s.key === def.key
+        )
+        skills.push({
+          id: existing?.id ?? '',
+          characterID: existing?.characterID ?? '',
+          category: category as CategoryKey,
+          key: def.key,
+          value: existing?.value ?? 0,
+          specialization: existing?.specialization ?? [],
+        })
       })
     })
-  })
-  localSkills.value = skills
-
-  if (character.value?.skillSpreadType) {
-    selectedSpread.value = character.value.skillSpreadType
+    return skills
+  },
+  set: (val: V5CharacterSkill[]) => {
+    character.value.skills = val
   }
-}
-
-onMounted(() => {
-  initializeSkills()
 })
 
-watch(() => character.value?.skills, () => {
-  if (character.value?.skills && character.value.skills.length > 0) {
-    initializeSkills()
-  }
-}, { deep: true })
-
-watch(localSkills, (newSkills) => {
-  if (character.value) {
-    character.value = { ...character.value, skills: [...newSkills] }
-  }
-}, { deep: true })
-
-watch(selectedSpread, (newSpread) => {
-  if (character.value) {
-    character.value = { ...character.value, skillSpreadType: newSpread }
+const selectedSpread = computed<SkillSpreadType>({
+  get: () => character.value?.skillSpreadType ?? 'balanced',
+  set: (val: SkillSpreadType) => {
+    character.value.skillSpreadType = val
   }
 })
 
@@ -122,7 +112,7 @@ function getSkillValue(category: CategoryKey, key: SkillKey): number {
 function setSkillValue(category: CategoryKey, key: SkillKey, value: number) {
   const index = localSkills.value.findIndex(s => s.category === category && s.key === key)
   if (index !== -1) {
-    localSkills.value[index] = { ...localSkills.value[index], value }
+    localSkills.value[index] = { ...localSkills.value[index], value } as any
     localSkills.value = [...localSkills.value]
   }
 }
@@ -139,7 +129,7 @@ function addSpecialization(category: CategoryKey, key: SkillKey) {
 
   const index = localSkills.value.findIndex(s => s.category === category && s.key === key)
   if (index !== -1) {
-    const skill = localSkills.value[index]
+    const skill = localSkills.value[index]!
     if (!skill.specialization.includes(inputValue)) {
       localSkills.value[index] = {
         ...skill,
@@ -154,7 +144,7 @@ function addSpecialization(category: CategoryKey, key: SkillKey) {
 function removeSpecialization(category: CategoryKey, key: SkillKey, spec: string) {
   const index = localSkills.value.findIndex(s => s.category === category && s.key === key)
   if (index !== -1) {
-    const skill = localSkills.value[index]
+    const skill = localSkills.value[index]!
     localSkills.value[index] = {
       ...skill,
       specialization: skill.specialization.filter(s => s !== spec)
@@ -172,8 +162,8 @@ function addFreeSpec(key: SkillKey) {
     const index = localSkills.value.findIndex(s => s.key === key)
     localSkills.value[index] = {
       ...localSkills.value[index],
-      specialization: [...localSkills.value[index].specialization, value]
-    }
+      specialization: [...localSkills.value[index]!.specialization, value]
+    } as any
     localSkills.value = [...localSkills.value]
   }
   freeSpecInputs.value[key] = ''
@@ -187,8 +177,8 @@ function addFreeChoiceSpec() {
     const index = localSkills.value.findIndex(s => s.key === freeChoiceSkill.value)
     localSkills.value[index] = {
       ...localSkills.value[index],
-      specialization: [...localSkills.value[index].specialization, freeChoiceSpec.value.trim()]
-    }
+      specialization: [...localSkills.value[index]!.specialization, freeChoiceSpec.value.trim()]
+    } as any
     localSkills.value = [...localSkills.value]
   }
   freeChoiceSpec.value = ''
@@ -268,7 +258,7 @@ function getMaxForSpread(): number {
               class="dist-value"
               :class="{
                 'dist-value--ok': distributionCounts[Number(level)] === count,
-                'dist-value--over': distributionCounts[Number(level)] > count
+                'dist-value--over': distributionCounts[Number(level)]! > count
               }"
             >
               {{ distributionCounts[Number(level)] || 0 }}/{{ count }}
@@ -296,8 +286,8 @@ function getMaxForSpread(): number {
                 @update:model-value="(v: number) => setSkillValue(category, skill.key, v)"
               />
             </div>
-            <div v-if="getSkillValue(category, skill.key) > 0" class="specializations">
-              <div class="spec-tags" v-if="getSpecializations(category, skill.key).length > 0">
+            <div v-if="getSpecializations(category, skill.key).length > 0" class="specializations">
+              <div class="spec-tags">
                 <span
                   v-for="spec in getSpecializations(category, skill.key)"
                   :key="spec"
@@ -310,20 +300,6 @@ function getMaxForSpread(): number {
                     @click="removeSpecialization(category, skill.key, spec)"
                   >×</button>
                 </span>
-              </div>
-              <div class="spec-input-row">
-                <input
-                  type="text"
-                  class="spec-input"
-                  placeholder="Spezialisierung..."
-                  v-model="specializationInputs[`${category}-${skill.key}`]"
-                  @keydown.enter.prevent="addSpecialization(category, skill.key)"
-                />
-                <button
-                  type="button"
-                  class="spec-add-btn"
-                  @click="addSpecialization(category, skill.key)"
-                >+</button>
               </div>
             </div>
           </div>

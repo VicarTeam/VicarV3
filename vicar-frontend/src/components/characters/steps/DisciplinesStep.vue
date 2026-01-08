@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, computed, watch } from 'vue'
+import { onMounted, computed } from 'vue'
 import { useV5DataStore } from '@/stores/v5data'
 import VCard from '@/components/ui/VCard.vue'
 import VDotRating from '@/components/characters/VDotRating.vue'
@@ -8,9 +8,6 @@ import type { V5Character, V5Discipline, V5CharacterDisciplineSelection } from '
 const character = defineModel<Partial<V5Character>>({ required: true })
 const v5data = useV5DataStore()
 
-const localSelections = ref<V5CharacterDisciplineSelection[]>([])
-
-// Base points: 3 (2+1 distribution between two disciplines)
 const BASE_POINTS = 3
 
 onMounted(async () => {
@@ -19,33 +16,21 @@ onMounted(async () => {
     v5data.fetchDisciplines(),
     v5data.fetchPredatorTypes(),
   ])
-  initializeSelections()
 })
 
-function initializeSelections() {
-  if (character.value.disciplineSelections && character.value.disciplineSelections.length > 0) {
-    localSelections.value = [...character.value.disciplineSelections]
+const localSelections = computed<V5CharacterDisciplineSelection[]>({
+  get: () => character.value?.disciplineSelections ?? [],
+  set: (val: V5CharacterDisciplineSelection[]) => {
+    character.value.disciplineSelections = val
   }
-}
+})
 
-watch(() => character.value.disciplineSelections, () => {
-  if (character.value.disciplineSelections) {
-    initializeSelections()
-  }
-}, { deep: true })
-
-watch(localSelections, (newSelections) => {
-  character.value = { ...character.value, disciplineSelections: [...newSelections] }
-}, { deep: true })
-
-// Get clan disciplines
 const clanDisciplines = computed(() => {
   if (!character.value.clanID) return []
   const clan = v5data.getClanById(character.value.clanID)
   return clan?.disciplines ?? []
 })
 
-// Get predator type discipline bonus
 const predatorDisciplineBonus = computed(() => {
   if (!character.value.predatorTypeID) return null
 
@@ -62,22 +47,18 @@ const predatorDisciplineBonus = computed(() => {
   }
 })
 
-// Total available points
 const totalAvailablePoints = computed(() => {
   return BASE_POINTS + (predatorDisciplineBonus.value?.points ?? 0)
 })
 
-// Points spent
 const pointsSpent = computed(() => {
   return localSelections.value.reduce((sum, sel) => sum + sel.currentLevel, 0)
 })
 
-// Points remaining
 const pointsRemaining = computed(() => {
   return totalAvailablePoints.value - pointsSpent.value
 })
 
-// Check if distribution is valid (for base points: 2 in one, 1 in another)
 const distributionValid = computed(() => {
   const clanSelections = localSelections.value.filter(sel =>
     clanDisciplines.value.some(d => d.id === sel.disciplineID)
@@ -87,9 +68,8 @@ const distributionValid = computed(() => {
 
   const levels = clanSelections.map(s => s.currentLevel).sort((a, b) => b - a)
 
-  // Check base distribution (2+1)
   if (levels.length >= 2) {
-    const hasValidBase = levels[0] >= 2 && levels[1] >= 1
+    const hasValidBase = levels[0]! >= 2 && levels[1]! >= 1
     return hasValidBase && pointsRemaining.value === 0
   }
 
@@ -102,25 +82,26 @@ function getDisciplineLevel(disciplineId: string): number {
 }
 
 function setDisciplineLevel(disciplineId: string, level: number) {
-  const existingIndex = localSelections.value.findIndex(d => d.disciplineID === disciplineId)
+  const current = [...localSelections.value]
+  const existingIndex = current.findIndex(d => d.disciplineID === disciplineId)
 
   if (level === 0) {
     if (existingIndex !== -1) {
-      localSelections.value = localSelections.value.filter(d => d.disciplineID !== disciplineId)
+      localSelections.value = current.filter(d => d.disciplineID !== disciplineId)
     }
     return
   }
 
   if (existingIndex !== -1) {
-    localSelections.value[existingIndex] = {
-      ...localSelections.value[existingIndex],
+    current[existingIndex] = {
+      ...current[existingIndex],
       currentLevel: level,
       points: level
-    }
-    localSelections.value = [...localSelections.value]
+    } as any
+    localSelections.value = current
   } else {
     localSelections.value = [
-      ...localSelections.value,
+      ...current,
       {
         id: `disc-${disciplineId}`,
         characterID: '',
@@ -133,7 +114,6 @@ function setDisciplineLevel(disciplineId: string, level: number) {
   }
 }
 
-// Check if discipline can be increased
 function canIncrease(disciplineId: string): boolean {
   const currentLevel = getDisciplineLevel(disciplineId)
   if (currentLevel >= 5) return false
@@ -142,12 +122,10 @@ function canIncrease(disciplineId: string): boolean {
   return true
 }
 
-// Get discipline abilities for current level
 function getDisciplineAbilities(discipline: V5Discipline, level: number) {
   return discipline.abilities.filter(a => a.level <= level)
 }
 
-// Check if ability requirements are met
 function abilityRequirementsMet(ability: any): boolean {
   if (!ability.combinationRefID) return true
 
@@ -218,7 +196,6 @@ function getDisciplineName(disciplineId: string): string {
             />
           </div>
 
-          <!-- Show abilities for selected disciplines -->
           <div v-if="getDisciplineLevel(discipline.id) > 0 && discipline.abilities?.length" class="discipline-abilities">
             <h4>Verfügbare Kräfte (bis Level {{ getDisciplineLevel(discipline.id) }}):</h4>
             <div class="abilities-list">

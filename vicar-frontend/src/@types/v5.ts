@@ -18,6 +18,7 @@ export interface V5Book {
 
 export interface V5Discipline {
   id: string
+  oldVicarID?: number
   name: string
   summary?: string
   note?: string
@@ -45,6 +46,7 @@ export interface V5DisciplineAbility {
 
 export interface V5Clan {
   id: string
+  oldVicarID?: number
   bookID: string
   name: string
   slogan: string
@@ -77,7 +79,6 @@ export interface V5PredatorType {
 
 export interface V5CharacterAttribute {
   id: string
-  characterID: string
   category: CategoryKey
   key: AttributeKey
   value: number

@@ -1,92 +1,240 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useV5DataStore } from '@/stores/v5data'
 import VCard from '@/components/ui/VCard.vue'
 import VModal from '@/components/ui/VModal.vue'
 import VButton from '@/components/ui/VButton.vue'
-import type { V5Character, V5PredatorType, V5PredatorAction, SkillKey, CategoryKey } from '@/@types/v5'
+import type { V5Character, V5PredatorType, V5PredatorAction } from '@/@types/v5'
 
 const character = defineModel<Partial<V5Character>>({ required: true })
 const v5data = useV5DataStore()
 
 const showActionsModal = ref(false)
 const pendingPredatorType = ref<V5PredatorType | null>(null)
-const pendingActions = ref<V5PredatorAction[]>([])
+const actionsToProcess = ref<V5PredatorAction[]>([])
 const currentActionIndex = ref(0)
-
-// User choices for actions
 const actionChoices = ref<Record<string, any>>({})
 
-const skillDefinitions: Record<CategoryKey, { key: SkillKey; label: string }[]> = {
-  physical: [
-    { key: 'ath', label: 'Athletik' },
-    { key: 'bra', label: 'Handgemenge' },
-    { key: 'cra', label: 'Handwerk' },
-    { key: 'dri', label: 'Fahren' },
-    { key: 'fir', label: 'Schusswaffen' },
-    { key: 'lar', label: 'Heimlichkeit' },
-    { key: 'mel', label: 'Nahkampf' },
-    { key: 'ste', label: 'Überleben' },
-    { key: 'sur', label: 'Überlebensinstinkt' },
-  ],
-  social: [
-    { key: 'ani', label: 'Tierkunde' },
-    { key: 'eti', label: 'Etikette' },
-    { key: 'ins', label: 'Einblick' },
-    { key: 'int', label: 'Einschüchtern' },
-    { key: 'lea', label: 'Anführen' },
-    { key: 'per', label: 'Überzeugen' },
-    { key: 'prf', label: 'Darbietung' },
-    { key: 'sub', label: 'Gassenwissen' },
-    { key: 'str', label: 'Täuschen' },
-  ],
-  mental: [
-    { key: 'aca', label: 'Geisteswissenschaften' },
-    { key: 'awa', label: 'Aufmerksamkeit' },
-    { key: 'fin', label: 'Finanzen' },
-    { key: 'inv', label: 'Untersuchung' },
-    { key: 'med', label: 'Medizin' },
-    { key: 'occ', label: 'Okkultismus' },
-    { key: 'pol', label: 'Politik' },
-    { key: 'sci', label: 'Naturwissenschaften' },
-    { key: 'tec', label: 'Technologie' },
-  ],
+// Skill key mapping: JSON keys -> Frontend keys
+const skillKeyMap: Record<string, string> = {
+  ken: 'ani', // Animal Ken
+  stw: 'str', // Streetwise
+  pes: 'per', // Persuasion
+  per: 'prf', // Performance
 }
 
-const allSkillsFlat = computed(() => {
-  const result: { key: SkillKey; label: string }[] = []
-  Object.values(skillDefinitions).forEach(defs => {
-    defs.forEach(def => result.push(def))
+// Reverse mapping
+const skillKeyMapReverse: Record<string, string> = {
+  ani: 'ken',
+  str: 'stw',
+  per: 'pes',
+  prf: 'per',
+}
+
+// Skill labels
+const skillLabels: Record<string, string> = {
+  ath: 'Athletik', bra: 'Handgemenge', cra: 'Handwerk', dri: 'Fahren',
+  fir: 'Schusswaffen', lar: 'Heimlichkeit', mel: 'Nahkampf', ste: 'Diebstahl',
+  sur: 'Überleben', ani: 'Tierkunde', eti: 'Etikette', ins: 'Einblick',
+  int: 'Einschüchtern', lea: 'Führung', per: 'Überreden', prf: 'Darbietung',
+  sub: 'Täuschung', str: 'Szenekenntnis', aca: 'Bildung', awa: 'Aufmerksamkeit',
+  fin: 'Finanzen', inv: 'Nachforschung', med: 'Medizin', occ: 'Okkultismus',
+  pol: 'Politik', sci: 'Wissenschaft', tec: 'Technologie',
+  // Also map JSON keys for display
+  ken: 'Tierkunde', stw: 'Szenekenntnis', pes: 'Überreden',
+}
+
+onMounted(async () => {
+  await Promise.all([
+    v5data.fetchPredatorTypes(),
+    v5data.fetchClans(),
+    v5data.fetchDisciplines(),
+  ])
+})
+
+// Get character's clan oldVicarID for restriction checking
+const characterClanOldVicarID = computed(() => {
+  if (!character.value.clanID) return null
+  const clan = v5data.clans?.find(c => c.id === character.value.clanID)
+  return clan?.oldVicarID ?? null
+})
+
+// Get character's selected books oldVicarIDs
+const characterBookOldVicarIDs = computed(() => {
+  return character.value.books?.map(b => b.oldVicarID).filter(id => id !== undefined) ?? []
+})
+
+// Check if a predator type passes its restrictions
+function checkPredatorTypeRestriction(predator: V5PredatorType): { allowed: boolean; reason?: string } {
+  if (!predator.restriction) return { allowed: true }
+
+  const restriction = predator.restriction as any
+  const type = restriction.type
+  const data = restriction.data
+
+  switch (type) {
+    case 'exclude_clans':
+      if (characterClanOldVicarID.value && (data as number[]).includes(characterClanOldVicarID.value)) {
+        return { allowed: false, reason: 'Nicht für deinen Clan verfügbar' }
+      }
+      break
+    case 'only_clans':
+      if (!characterClanOldVicarID.value || !(data as number[]).includes(characterClanOldVicarID.value)) {
+        return { allowed: false, reason: 'Nur für bestimmte Clans verfügbar' }
+      }
+      break
+    case 'max_blood_potency':
+      if ((character.value.bloodPotency ?? 1) > (data as number)) {
+        return { allowed: false, reason: `Nur für Blutpotenz ${data} oder niedriger` }
+      }
+      break
+    case 'book_activated':
+      const requiredBooks = data as number[]
+      if (!requiredBooks.some(b => characterBookOldVicarIDs.value.includes(b))) {
+        return { allowed: false, reason: 'Benötigt bestimmte Bücher' }
+      }
+      break
+  }
+
+  return { allowed: true }
+}
+
+// Filter available predator types
+const availablePredatorTypes = computed(() => {
+  return v5data.predatorTypes?.map(p => ({
+    ...p,
+    ...checkPredatorTypeRestriction(p)
+  })) ?? []
+})
+
+// Current action being processed
+const currentAction = computed(() => actionsToProcess.value[currentActionIndex.value] || null)
+
+// Parse specialization choices from action data
+function parseSpecializationChoices(action: V5PredatorAction): { skillKey: string; spec: string; needsInput: boolean; inputLabel?: string }[] {
+  const data = action.data as any
+  if (!data?.choices) return []
+
+  return (data.choices as string[]).map(choice => {
+    const [skillKey, specPart] = choice.split('=')
+    const frontendKey = skillKeyMap[skillKey] || skillKey
+
+    if (specPart.startsWith('$input:')) {
+      return {
+        skillKey: frontendKey,
+        spec: '',
+        needsInput: true,
+        inputLabel: specPart.replace('$input:', '')
+      }
+    }
+    return {
+      skillKey: frontendKey,
+      spec: specPart,
+      needsInput: false
+    }
   })
-  return result
+}
+
+// Parse discipline choices from action data
+function parseDisciplineChoices(action: V5PredatorAction): { disciplineOldVicarID: number; restriction?: any; allowed: boolean }[] {
+  const data = action.data as any
+  if (!data?.choices) return []
+
+  return (data.choices as any[]).map(choice => {
+    const discOldVicarID = choice.id as number
+    let allowed = true
+
+    if (choice.restriction) {
+      const rType = choice.restriction.type
+      const rData = choice.restriction.data
+
+      switch (rType) {
+        case 'only_clans':
+          allowed = characterClanOldVicarID.value !== null && (rData as number[]).includes(characterClanOldVicarID.value)
+          break
+        case 'book_activated':
+          allowed = (rData as number[]).some(b => characterBookOldVicarIDs.value.includes(b))
+          break
+      }
+    }
+
+    return {
+      disciplineOldVicarID: discOldVicarID,
+      restriction: choice.restriction,
+      allowed
+    }
+  })
+}
+
+// Get discipline by oldVicarID
+function getDisciplineByOldVicarID(oldVicarID: number) {
+  return v5data.disciplines?.find(d => d.oldVicarID === oldVicarID)
+}
+
+// Available discipline choices for current action
+const availableDisciplineChoices = computed(() => {
+  if (!currentAction.value || currentAction.value.type !== 'discipline_point') return []
+
+  const choices = parseDisciplineChoices(currentAction.value)
+  return choices.map(c => ({
+    ...c,
+    discipline: getDisciplineByOldVicarID(c.disciplineOldVicarID)
+  })).filter(c => c.discipline && c.allowed)
 })
 
-onMounted(() => {
-  v5data.fetchPredatorTypes()
+// Available specialization choices for current action
+const availableSpecChoices = computed(() => {
+  if (!currentAction.value || currentAction.value.type !== 'additional_specialization') return []
+  return parseSpecializationChoices(currentAction.value)
 })
 
-const currentAction = computed(() => {
-  return pendingActions.value[currentActionIndex.value] || null
-})
-
-const needsUserChoice = computed(() => {
-  if (!currentAction.value) return false
-  const type = currentAction.value.type
-  return type === 'additional_specialization' || type === 'discipline_point'
-})
+// Check which actions need user input
+function actionsNeedingChoice(predator: V5PredatorType): V5PredatorAction[] {
+  return predator.actions.filter(a => {
+    if (a.type === 'additional_specialization') {
+      const choices = parseSpecializationChoices(a)
+      return choices.length > 1 || choices.some(c => c.needsInput)
+    }
+    if (a.type === 'discipline_point') {
+      const choices = parseDisciplineChoices(a)
+      const availableChoices = choices.filter(c => {
+        if (!c.restriction) return true
+        // Check restriction
+        if (c.restriction.type === 'only_clans') {
+          return characterClanOldVicarID.value !== null &&
+                 (c.restriction.data as number[]).includes(characterClanOldVicarID.value)
+        }
+        if (c.restriction.type === 'book_activated') {
+          return (c.restriction.data as number[]).some(b => characterBookOldVicarIDs.value.includes(b))
+        }
+        return true
+      })
+      return availableChoices.length > 1
+    }
+    if (a.type === 'add_flaw' && (a.data as any)?.choices?.length > 1) {
+      return true
+    }
+    if (a.type === 'spend_background_points_between' || a.type === 'spend_flaw_points_between') {
+      return true
+    }
+    return false
+  })
+}
 
 function selectPredatorType(predatorTypeId: string) {
   const predator = v5data.predatorTypes?.find(p => p.id === predatorTypeId)
   if (!predator) return
 
-  // Check if there are actions that need user choices
-  const choiceActions = predator.actions.filter(a =>
-    a.type === 'additional_specialization' || a.type === 'discipline_point'
-  )
+  // Check restrictions
+  const restriction = checkPredatorTypeRestriction(predator)
+  if (!restriction.allowed) return
+
+  // Get actions that need user choices
+  const choiceActions = actionsNeedingChoice(predator)
 
   if (choiceActions.length > 0) {
     pendingPredatorType.value = predator
-    pendingActions.value = choiceActions
+    actionsToProcess.value = choiceActions
     currentActionIndex.value = 0
     actionChoices.value = {}
     showActionsModal.value = true
@@ -97,45 +245,36 @@ function selectPredatorType(predatorTypeId: string) {
 }
 
 function applyPredatorType(predator: V5PredatorType, choices: Record<string, any>) {
-  character.value = {
-    ...character.value,
-    predatorTypeID: predator.id,
-    // Store the user's choices for predator actions
-    _predatorActionChoices: choices
-  }
+  // Store predator type and choices
+  character.value.predatorTypeID = predator.id
 
-  // Apply automatic actions
+  // Apply all actions
   predator.actions.forEach(action => {
     applyAction(action, choices[action.id])
   })
 }
 
 function applyAction(action: V5PredatorAction, choice?: any) {
+  const data = action.data as any
+
   switch (action.type) {
     case 'humanity_change':
-      if (action.data?.amount !== undefined) {
-        const currentHumanity = character.value.humanity ?? 7
-        character.value = {
-          ...character.value,
-          humanity: Math.max(0, Math.min(10, currentHumanity + action.data.amount))
-        }
+      if (data?.amount !== undefined) {
+        character.value.humanity = Math.max(0, Math.min(10, (character.value.humanity ?? 7) + data.amount))
       }
       break
 
     case 'blood_potency_change':
-      if (action.data?.amount !== undefined) {
-        const currentBP = character.value.bloodPotency ?? 1
-        character.value = {
-          ...character.value,
-          bloodPotency: Math.max(0, Math.min(10, currentBP + action.data.amount))
-        }
+      if (data?.amount !== undefined) {
+        character.value.bloodPotency = Math.max(0, Math.min(10, (character.value.bloodPotency ?? 1) + data.amount))
       }
       break
 
     case 'additional_specialization':
       if (choice?.skillKey && choice?.specialization) {
         const skills = [...(character.value.skills || [])]
-        const skillIndex = skills.findIndex(s => s.key === choice.skillKey)
+        const frontendKey = skillKeyMap[choice.skillKey] || choice.skillKey
+        const skillIndex = skills.findIndex(s => s.key === frontendKey)
         if (skillIndex !== -1) {
           const skill = skills[skillIndex]
           if (!skill.specialization.includes(choice.specialization)) {
@@ -143,42 +282,49 @@ function applyAction(action: V5PredatorAction, choice?: any) {
               ...skill,
               specialization: [...skill.specialization, choice.specialization]
             }
-            character.value = { ...character.value, skills }
+            character.value.skills = skills
+          }
+        }
+      } else if (!choice && data?.choices?.length === 1) {
+        // Auto-apply single choice
+        const choices = parseSpecializationChoices(action)
+        if (choices.length === 1 && !choices[0].needsInput) {
+          const c = choices[0]
+          const skills = [...(character.value.skills || [])]
+          const skillIndex = skills.findIndex(s => s.key === c.skillKey)
+          if (skillIndex !== -1) {
+            const skill = skills[skillIndex]
+            if (!skill.specialization.includes(c.spec)) {
+              skills[skillIndex] = {
+                ...skill,
+                specialization: [...skill.specialization, c.spec]
+              }
+              character.value.skills = skills
+            }
           }
         }
       }
       break
 
     case 'discipline_point':
-      // This will be handled in DisciplinesStep where we show the predator discipline points
-      break
-
-    case 'skill_change':
-      if (action.data?.skillKey && action.data?.amount !== undefined) {
-        const skills = [...(character.value.skills || [])]
-        const skillIndex = skills.findIndex(s => s.key === action.data.skillKey)
-        if (skillIndex !== -1) {
-          skills[skillIndex] = {
-            ...skills[skillIndex],
-            value: Math.max(0, Math.min(5, skills[skillIndex].value + action.data.amount))
-          }
-          character.value = { ...character.value, skills }
-        }
+      // Store discipline choice for DisciplinesStep to use
+      if (choice?.disciplineID) {
+        const predatorDisciplines = character.value._predatorDisciplines || []
+        character.value._predatorDisciplines = [...predatorDisciplines, {
+          disciplineID: choice.disciplineID,
+          points: 1
+        }]
       }
       break
 
-    case 'attribute_change':
-      if (action.data?.attributeKey && action.data?.amount !== undefined) {
-        const attrs = [...(character.value.attributes || [])]
-        const attrIndex = attrs.findIndex(a => a.key === action.data.attributeKey)
-        if (attrIndex !== -1) {
-          attrs[attrIndex] = {
-            ...attrs[attrIndex],
-            value: Math.max(1, Math.min(5, attrs[attrIndex].value + action.data.amount))
-          }
-          character.value = { ...character.value, attributes: attrs }
-        }
-      }
+    // TODO: Implement other action types as needed
+    case 'add_merit':
+    case 'add_background':
+    case 'add_flaw':
+    case 'add_background_points':
+    case 'spend_background_points_between':
+    case 'spend_flaw_points_between':
+      // These will be handled in TraitsStep
       break
   }
 }
@@ -209,10 +355,9 @@ function isCurrentActionComplete(): boolean {
 }
 
 function nextAction() {
-  if (currentActionIndex.value < pendingActions.value.length - 1) {
+  if (currentActionIndex.value < actionsToProcess.value.length - 1) {
     currentActionIndex.value++
   } else {
-    // All actions completed, apply predator type
     if (pendingPredatorType.value) {
       applyPredatorType(pendingPredatorType.value, actionChoices.value)
     }
@@ -223,36 +368,25 @@ function nextAction() {
 function closeModal() {
   showActionsModal.value = false
   pendingPredatorType.value = null
-  pendingActions.value = []
+  actionsToProcess.value = []
   currentActionIndex.value = 0
   actionChoices.value = {}
 }
 
-function getSkillLabel(key: SkillKey): string {
-  return allSkillsFlat.value.find(s => s.key === key)?.label || key
-}
-
-// Get available disciplines from character's clan
-const availableDisciplines = computed(() => {
-  const clanID = character.value.clanID
-  if (!clanID) return []
-  const clan = v5data.clans?.find(c => c.id === clanID)
-  return clan?.disciplines || []
-})
-
 function getActionTypeLabel(type: string): string {
-  switch (type) {
-    case 'additional_specialization': return 'Zusätzliche Spezialisierung'
-    case 'discipline_point': return 'Disziplin-Punkt'
-    case 'humanity_change': return 'Menschlichkeit'
-    case 'blood_potency_change': return 'Blutpotenz'
-    case 'add_merit': return 'Vorzug'
-    case 'add_background': return 'Hintergrund'
-    case 'add_flaw': return 'Schwäche'
-    case 'skill_change': return 'Fähigkeit'
-    case 'attribute_change': return 'Attribut'
-    default: return type
+  const labels: Record<string, string> = {
+    additional_specialization: 'Spezialisierung',
+    discipline_point: 'Disziplin',
+    humanity_change: 'Menschlichkeit',
+    blood_potency_change: 'Blutpotenz',
+    add_merit: 'Vorzug',
+    add_background: 'Hintergrund',
+    add_background_points: 'Hintergrund',
+    add_flaw: 'Schwäche',
+    spend_background_points_between: 'Hintergründe verteilen',
+    spend_flaw_points_between: 'Schwächen verteilen',
   }
+  return labels[type] || type
 }
 </script>
 
@@ -263,13 +397,17 @@ function getActionTypeLabel(type: string): string {
     <div class="step-content">
       <div class="predator-grid">
         <div
-          v-for="predator in v5data.predatorTypes"
+          v-for="predator in availablePredatorTypes"
           :key="predator.id"
           class="predator-card"
-          :class="{ 'predator-card--selected': character.predatorTypeID === predator.id }"
-          @click="selectPredatorType(predator.id)"
+          :class="{
+            'predator-card--selected': character.predatorTypeID === predator.id,
+            'predator-card--disabled': !predator.allowed
+          }"
+          @click="predator.allowed && selectPredatorType(predator.id)"
         >
           <h3>{{ predator.name }}</h3>
+          <p v-if="!predator.allowed" class="restriction-warning">{{ predator.reason }}</p>
           <p class="predator-description">{{ predator.description }}</p>
 
           <div v-if="predator.actions.length > 0" class="predator-actions">
@@ -300,32 +438,44 @@ function getActionTypeLabel(type: string): string {
     <div v-if="currentAction" class="action-modal-content">
       <p class="action-description">{{ currentAction.description }}</p>
 
+      <!-- Additional Specialization -->
       <div v-if="currentAction.type === 'additional_specialization'" class="action-form">
         <div class="form-group">
-          <label>Fähigkeit wählen:</label>
-          <select
-            class="form-select"
-            :value="actionChoices[currentAction.id]?.skillKey || ''"
-            @change="(e) => setActionChoice(currentAction!.id, 'skillKey', (e.target as HTMLSelectElement).value)"
-          >
-            <option value="">-- Fähigkeit auswählen --</option>
-            <optgroup v-for="(skills, category) in skillDefinitions" :key="category" :label="category === 'physical' ? 'Körperlich' : category === 'social' ? 'Sozial' : 'Geistig'">
-              <option v-for="skill in skills" :key="skill.key" :value="skill.key">
-                {{ skill.label }}
-              </option>
-            </optgroup>
-          </select>
-        </div>
+          <label>Fähigkeit & Spezialisierung wählen:</label>
+          <div class="choice-list">
+            <label
+              v-for="(choice, idx) in availableSpecChoices"
+              :key="idx"
+              class="choice-item"
+              :class="{ 'choice-item--selected': actionChoices[currentAction.id]?.skillKey === choice.skillKey && (!choice.needsInput || actionChoices[currentAction.id]?.specialization) }"
+            >
+              <input
+                type="radio"
+                :name="`spec-choice-${currentAction.id}`"
+                :value="choice.skillKey"
+                :checked="actionChoices[currentAction.id]?.skillKey === choice.skillKey"
+                @change="setActionChoice(currentAction.id, 'skillKey', choice.skillKey); if (!choice.needsInput) setActionChoice(currentAction.id, 'specialization', choice.spec)"
+              />
+              <span class="choice-label">
+                {{ skillLabels[choice.skillKey] || choice.skillKey }}
+                <span v-if="!choice.needsInput" class="choice-spec">({{ choice.spec }})</span>
+              </span>
+            </label>
+          </div>
 
-        <div class="form-group">
-          <label>Spezialisierung:</label>
-          <input
-            type="text"
-            class="form-input"
-            placeholder="Spezialisierung eingeben..."
-            :value="actionChoices[currentAction.id]?.specialization || ''"
-            @input="(e) => setActionChoice(currentAction!.id, 'specialization', (e.target as HTMLInputElement).value)"
-          />
+          <!-- Custom input if selected choice needs it -->
+          <div
+            v-if="availableSpecChoices.find(c => c.skillKey === actionChoices[currentAction.id]?.skillKey)?.needsInput"
+            class="custom-spec-input"
+          >
+            <input
+              type="text"
+              class="form-input"
+              :placeholder="availableSpecChoices.find(c => c.skillKey === actionChoices[currentAction.id]?.skillKey)?.inputLabel || 'Spezialisierung eingeben...'"
+              :value="actionChoices[currentAction.id]?.specialization || ''"
+              @input="(e) => setActionChoice(currentAction.id, 'specialization', (e.target as HTMLInputElement).value)"
+            />
+          </div>
         </div>
       </div>
 
@@ -333,21 +483,31 @@ function getActionTypeLabel(type: string): string {
       <div v-if="currentAction.type === 'discipline_point'" class="action-form">
         <div class="form-group">
           <label>Disziplin wählen:</label>
-          <select
-            class="form-select"
-            :value="actionChoices[currentAction.id]?.disciplineID || ''"
-            @change="(e) => setActionChoice(currentAction!.id, 'disciplineID', (e.target as HTMLSelectElement).value)"
-          >
-            <option value="">-- Disziplin auswählen --</option>
-            <option v-for="disc in availableDisciplines" :key="disc.id" :value="disc.id">
-              {{ disc.name }}
-            </option>
-          </select>
+          <div class="choice-list">
+            <label
+              v-for="choice in availableDisciplineChoices"
+              :key="choice.disciplineOldVicarID"
+              class="choice-item"
+              :class="{ 'choice-item--selected': actionChoices[currentAction.id]?.disciplineID === choice.discipline?.id }"
+            >
+              <input
+                type="radio"
+                :name="`disc-choice-${currentAction.id}`"
+                :value="choice.discipline?.id"
+                :checked="actionChoices[currentAction.id]?.disciplineID === choice.discipline?.id"
+                @change="setActionChoice(currentAction.id, 'disciplineID', choice.discipline?.id)"
+              />
+              <span class="choice-label">{{ choice.discipline?.name }}</span>
+            </label>
+          </div>
+          <p v-if="availableDisciplineChoices.length === 0" class="no-choices">
+            Keine Disziplinen verfügbar (Clan-Einschränkung oder fehlende Bücher)
+          </p>
         </div>
       </div>
 
       <div class="action-progress">
-        Schritt {{ currentActionIndex + 1 }} von {{ pendingActions.length }}
+        Schritt {{ currentActionIndex + 1 }} von {{ actionsToProcess.length }}
       </div>
     </div>
 
@@ -359,7 +519,7 @@ function getActionTypeLabel(type: string): string {
           :disabled="!isCurrentActionComplete()"
           @click="nextAction"
         >
-          {{ currentActionIndex < pendingActions.length - 1 ? 'Weiter' : 'Bestätigen' }}
+          {{ currentActionIndex < actionsToProcess.length - 1 ? 'Weiter' : 'Bestätigen' }}
         </VButton>
       </div>
     </template>
@@ -394,7 +554,7 @@ h2 {
   cursor: pointer;
   transition: all $t-med $ease;
 
-  &:hover {
+  &:hover:not(.predator-card--disabled) {
     border-color: $border-strong;
     background: rgba(255, 255, 255, .04);
     transform: translateY(-2px);
@@ -406,11 +566,26 @@ h2 {
     box-shadow: 0 0 0 4px rgba(255, 59, 84, .15);
   }
 
+  &--disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
   h3 {
-    margin: 0 0 $s-3;
+    margin: 0 0 $s-2;
     font-family: $font-head;
     font-size: $fs-2;
   }
+}
+
+.restriction-warning {
+  margin: 0 0 $s-2;
+  padding: $s-2;
+  border-radius: $r-sm;
+  background: rgba(255, 100, 100, .15);
+  color: rgba(255, 100, 100, .9);
+  font-size: 0.85rem;
+  font-weight: 500;
 }
 
 .predator-description {
@@ -441,10 +616,7 @@ h2 {
 
   li {
     margin-bottom: $s-1;
-
-    &:last-child {
-      margin-bottom: 0;
-    }
+    &:last-child { margin-bottom: 0; }
   }
 }
 
@@ -459,7 +631,7 @@ h2 {
   color: $text-2;
 }
 
-// Modal styles
+// Modal
 .action-modal-content {
   display: grid;
   gap: $s-4;
@@ -485,15 +657,61 @@ h2 {
   display: grid;
   gap: $s-2;
 
-  label {
+  > label:first-child {
     font-weight: 500;
     color: $text-1;
     font-size: 0.9rem;
   }
 }
 
-.form-select,
+.choice-list {
+  display: grid;
+  gap: $s-2;
+}
+
+.choice-item {
+  display: flex;
+  align-items: center;
+  gap: $s-2;
+  padding: $s-3;
+  border-radius: $r-md;
+  border: 1px solid $border;
+  background: rgba(255, 255, 255, .02);
+  cursor: pointer;
+  transition: all $t-fast $ease;
+
+  &:hover {
+    border-color: $border-strong;
+    background: rgba(255, 255, 255, .04);
+  }
+
+  &--selected {
+    border-color: $red-0;
+    background: rgba(255, 59, 84, .08);
+  }
+
+  input[type="radio"] {
+    accent-color: $red-0;
+  }
+}
+
+.choice-label {
+  color: $text-0;
+  font-weight: 500;
+}
+
+.choice-spec {
+  color: $text-2;
+  font-weight: 400;
+  margin-left: $s-1;
+}
+
+.custom-spec-input {
+  margin-top: $s-2;
+}
+
 .form-input {
+  width: 100%;
   padding: $s-2 $s-3;
   border-radius: $r-md;
   border: 1px solid $border;
@@ -512,16 +730,14 @@ h2 {
   }
 }
 
-.form-select {
-  option {
-    background: $bg-1;
-    color: $text-0;
-  }
-
-  optgroup {
-    font-weight: 600;
-    color: $text-1;
-  }
+.no-choices {
+  margin: 0;
+  padding: $s-3;
+  text-align: center;
+  color: $text-2;
+  font-size: 0.9rem;
+  background: rgba(255, 100, 100, .05);
+  border-radius: $r-md;
 }
 
 .action-progress {

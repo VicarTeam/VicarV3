@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, watch, onMounted } from 'vue'
+import { computed } from 'vue'
 import VCard from '@/components/ui/VCard.vue'
 import VDotRating from '@/components/characters/VDotRating.vue'
 import type { V5Character, CategoryKey, AttributeKey, V5CharacterAttribute } from '@/@types/v5'
@@ -24,29 +24,27 @@ const attributeDefinitions: Record<CategoryKey, { key: AttributeKey; label: stri
   ],
 }
 
-const localAttributes = ref<V5CharacterAttribute[]>([])
-
-function initializeAttributes() {
-  const attrs: V5CharacterAttribute[] = []
-  Object.entries(attributeDefinitions).forEach(([category, defs]) => {
-    defs.forEach(def => {
-      const existing = character.value?.attributes?.find(
-        a => a.category === category && a.key === def.key
-      )
-      attrs.push({
-        id: existing?.id ?? `${category}-${def.key}`,
-        characterID: existing?.characterID ?? '',
-        category: category as CategoryKey,
-        key: def.key,
-        value: existing?.value ?? 1,
+const localAttributes = computed<V5CharacterAttribute[]>({
+  get: () => {
+    const attrs: V5CharacterAttribute[] = []
+    Object.entries(attributeDefinitions).forEach(([category, defs]) => {
+      defs.forEach(def => {
+        const existing = character.value?.attributes?.find(
+          a => a.category === category && a.key === def.key
+        )
+        attrs.push({
+          id: existing?.id ?? "",
+          category: category as CategoryKey,
+          key: def.key,
+          value: existing?.value ?? 0,
+        })
       })
     })
-  })
-  localAttributes.value = attrs
-}
-
-onMounted(() => {
-  initializeAttributes()
+    return attrs
+  },
+  set: (val: V5CharacterAttribute[]) => {
+    character.value.attributes = val
+  }
 })
 
 
@@ -58,8 +56,9 @@ function getAttributeValue(category: CategoryKey, key: AttributeKey): number {
 function setAttributeValue(category: CategoryKey, key: AttributeKey, value: number) {
   const index = localAttributes.value.findIndex(a => a.category === category && a.key === key)
   if (index !== -1) {
-    localAttributes.value[index] = { ...localAttributes.value[index], value }
-    localAttributes.value = [...localAttributes.value]
+    const updatedAttrs = [...localAttributes.value]
+    updatedAttrs[index] = { ...updatedAttrs[index], value } as any
+    localAttributes.value = updatedAttrs
   }
 }
 
