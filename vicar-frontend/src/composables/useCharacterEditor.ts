@@ -39,7 +39,7 @@ export function useCharacterEditor(initialChar?: V5Character) {
     bloodPotency: initialChar?.bloodPotency ?? calculateBloodPotency(initialGeneration),
   })
 
-  const steps: EditorStep[] = ['initial', 'clan', 'predator', 'attributes', 'skills', 'disciplines', 'traits', 'optional']
+  const steps: EditorStep[] = ['initial', 'clan', 'predator', 'attributes', 'skills', 'disciplines', 'traits']
 
   const currentStepIndex = computed(() => steps.indexOf(currentStep.value))
 

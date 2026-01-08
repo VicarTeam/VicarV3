@@ -63,7 +63,8 @@ export interface V5PredatorAction {
   predatorTypeID: string
   description: string
   type: 'additional_specialization' | 'discipline_point' | 'humanity_change' | 'add_merit' |
-    'add_background' | 'add_flaw' | 'blood_potency_change' | 'attribute_change' | 'skill_change'
+    'add_background' | 'add_background_points' | 'add_flaw' | 'blood_potency_change' |
+    'attribute_change' | 'skill_change' | 'spend_background_points_between' | 'spend_flaw_points_between'
   data: any
   restriction?: any
 }
@@ -124,6 +125,10 @@ export interface V5CharacterFlawTrait {
   id: string
   usageID: string
   traitID: string
+  isLocked?: boolean
+  isManual?: boolean
+  customLevel?: number
+  suffix?: string
 }
 
 export interface V5CharacterTraitPackUsage {
@@ -186,6 +191,8 @@ export interface V5CharacterInternalData {
     skillKey?: string
     specialization?: string
     disciplineID?: string
+    // For spend_background/flaw_points_between
+    packDistribution?: Record<string, number> // packId -> points spent
   }>
   // Predator type bonuses that were applied (for reverting)
   predatorBonusesApplied?: {
@@ -193,6 +200,16 @@ export interface V5CharacterInternalData {
     bloodPotencyChange?: number
     specializations?: { skillKey: string; specialization: string }[]
     disciplinePoints?: { disciplineID: string; points: number }[]
+    // Trait bonuses from predator type (add_merit, add_background, add_flaw)
+    traits?: { packID: string; traitID: string; level: number; suffix?: string; isFlaw?: boolean }[]
+    // spend_points_between actions (for tracking predator-given points)
+    spendPointsBetween?: {
+      actionId: string
+      type: 'backgrounds' | 'flaws'
+      requiredPoints: number
+      allowedPackOldVicarIDs: number[]
+      distribution: Record<string, number> // packId -> points spent from predator bonus
+    }[]
   }
   // Discipline distribution selection
   disciplineDistribution?: {
@@ -254,6 +271,7 @@ export interface V5Character {
 
 export interface V5Trait {
   id: string
+  oldVicarID?: number
   level: number
   name: string
   description: string
@@ -263,6 +281,7 @@ export interface V5Trait {
   requirement?: any
   actions?: any
   restriction?: any
+  isFlaw: boolean
 }
 
 export interface V5TraitPackTrait {
@@ -273,6 +292,7 @@ export interface V5TraitPackTrait {
 
 export interface V5TraitPack {
   id: string
+  oldVicarID?: number
   bookID: string
   type: TraitPackType
   name: string

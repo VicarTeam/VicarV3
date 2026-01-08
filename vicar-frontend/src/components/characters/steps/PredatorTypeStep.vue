@@ -76,7 +76,7 @@ function checkPredatorTypeRestriction(predator: V5PredatorType): { allowed: bool
       break
     case 'max_blood_potency':
       if ((character.value.bloodPotency ?? 1) > (data as number)) {
-        return { allowed: false, reason: `Nur für Blutpotenz ${data} oder niedriger` }
+        return { allowed: false, reason: `Nur für Blutmacht ${data} oder niedriger` }
       }
       break
     case 'book_activated':
@@ -411,11 +411,13 @@ function getActionTypeLabel(type: string): string {
     additional_specialization: 'Spezialisierung',
     discipline_point: 'Disziplin',
     humanity_change: 'Menschlichkeit',
-    blood_potency_change: 'Blutpotenz',
+    blood_potency_change: 'Blutmacht',
     add_merit: 'Vorzug',
     add_background: 'Hintergrund',
     add_background_points: 'Hintergrund',
     add_flaw: 'Schwäche',
+    spend_background_points_between: 'Verteile Hintergrundpunkte',
+    spend_flaw_points_between: 'Verteile Schwächepunkte',
   }
   return labels[type] || type
 }
@@ -432,7 +434,7 @@ function getActionTypeLabel(type: string): string {
         </span>
       </div>
       <div v-if="appliedBonuses.bloodPotencyChange" class="bonus-item">
-        <span class="bonus-label">Blutpotenz:</span>
+        <span class="bonus-label">Blutmacht:</span>
         <span class="bonus-value" :class="{ 'bonus-value--positive': appliedBonuses.bloodPotencyChange > 0, 'bonus-value--negative': appliedBonuses.bloodPotencyChange < 0 }">
           {{ appliedBonuses.bloodPotencyChange > 0 ? '+' : '' }}{{ appliedBonuses.bloodPotencyChange }}
         </span>

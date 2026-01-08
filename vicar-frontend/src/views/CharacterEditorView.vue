@@ -44,7 +44,7 @@ onMounted(async () => {
 
     if (store.currentCharacter) {
       editor.character.value = store.currentCharacter
-      lastSavedChar.value = { ...store.currentCharacter }
+      fillLastSaved(store.currentCharacter)
     }
   }
   await nextTick()
@@ -72,7 +72,7 @@ watch(editor.character, async () => {
     try {
       await store.updateCharacter(characterId.value, changes)
       lastSaved.value = new Date()
-      lastSavedChar.value = { ...editor.character.value }
+      fillLastSaved(editor.character.value)
       setTimeout(() => {
         lastSaved.value = null
       }, 5000)
@@ -97,6 +97,10 @@ function finish() {
 function formatTime(date: Date): string {
   return date.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })
 }
+
+function fillLastSaved(char: Partial<V5Character>) {
+  lastSavedChar.value = JSON.parse(JSON.stringify(char)) // make a deep copy
+}
 </script>
 
 <template>
@@ -112,7 +116,7 @@ function formatTime(date: Date): string {
         </VButton>
         <h1>Character Editor</h1>
       </div>
-      <div class="save-status">
+      <div v-if="isSaving || lastSaved" class="save-status">
         <span v-if="isSaving" class="saving">Speichert...</span>
         <span v-else-if="lastSaved" class="saved">Gespeichert um {{ formatTime(lastSaved) }}</span>
       </div>

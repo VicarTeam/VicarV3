@@ -9,9 +9,8 @@ import type {
   V5TraitPack,
   V5Trait,
   V5CharacterTraitPackUsage,
-  V5CharacterTrait,
-  V5CharacterFlawTrait,
-  TraitPackType
+  V5CharacterInternalData,
+  V5PredatorAction,
 } from '@/@types/v5'
 
 const character = defineModel<Partial<V5Character>>({ required: true })
@@ -20,13 +19,12 @@ const v5data = useV5DataStore()
 const isLoading = ref(true)
 const expandedMeritPacks = ref<Set<string>>(new Set())
 const expandedBackgroundPacks = ref<Set<string>>(new Set())
-const expandedFlawPacks = ref<Set<string>>(new Set())
 
 const showSuffixModal = ref(false)
 const currentSuffixTrait = ref<{ pack: V5TraitPack; trait: V5Trait; level: number } | null>(null)
 const suffixInput = ref('')
 
-const BASE_MERIT_POINTS = 7
+const BASE_BACKGROUND_POINTS = 7
 const MIN_FLAW_POINTS = 2
 
 onMounted(async () => {
@@ -35,9 +33,21 @@ onMounted(async () => {
     v5data.fetchPredatorTypes(),
   ])
   isLoading.value = false
+  applyPredatorTraitBonuses()
 })
 
-// Separate merit and background packs
+watch(() => character.value.predatorTypeID, (newId, oldId) => {
+  if (newId !== oldId) {
+    revertPredatorTraitBonuses()
+    applyPredatorTraitBonuses()
+  }
+})
+
+const internalData = computed<V5CharacterInternalData>({
+  get: () => character.value.internalData ?? {},
+  set: (val) => { character.value.internalData = val }
+})
+
 const meritPacks = computed(() => {
   return v5data.traitPacks?.filter(p => p.type === 'merits') ?? []
 })
@@ -46,28 +56,282 @@ const backgroundPacks = computed(() => {
   return v5data.traitPacks?.filter(p => p.type === 'backgrounds') ?? []
 })
 
-// Get predator type traits
-const predatorTraits = computed(() => {
-  if (!character.value.predatorTypeID) return { merits: [], flaws: [] }
+const selectedPredatorType = computed(() => {
+  if (!character.value.predatorTypeID) return null
+  return v5data.predatorTypes?.find(p => p.id === character.value.predatorTypeID) ?? null
+})
 
-  const predator = v5data.predatorTypes?.find(p => p.id === character.value.predatorTypeID)
-  if (!predator) return { merits: [], flaws: [] }
+const spendPointsBetweenActions = computed(() => {
+  if (!selectedPredatorType.value) return []
 
-  const merits: { action: any; description: string }[] = []
-  const flaws: { action: any; description: string }[] = []
+  return selectedPredatorType.value.actions
+    .filter(a => a.type === 'spend_background_points_between' || a.type === 'spend_flaw_points_between')
+    .map(a => {
+      const data = a.data as any
+      const allowedPackOldVicarIDs = data?.choices ?? []
+      const allowedPacks = getPacksForSpendBetweenRaw(allowedPackOldVicarIDs)
+      return {
+        action: a,
+        type: a.type === 'spend_background_points_between' ? 'backgrounds' as const : 'flaws' as const,
+        bonusPoints: data?.points ?? 0,
+        allowedPackOldVicarIDs,
+        allowedPackIds: allowedPacks.map(p => p.id),
+        allowedPacks,
+      }
+    })
+})
 
-  predator.actions.forEach(action => {
-    if (action.type === 'add_merit' || action.type === 'add_background') {
+function getPacksForSpendBetweenRaw(allowedOldVicarIDs: number[]): V5TraitPack[] {
+  return v5data.traitPacks?.filter(p => {
+    return p.oldVicarID !== undefined && allowedOldVicarIDs.includes(p.oldVicarID)
+  }) ?? []
+}
+
+const backgroundCouponPackIds = computed(() => {
+  const ids: string[] = []
+  spendPointsBetweenActions.value.forEach(spa => {
+    if (spa.type === 'backgrounds') {
+      ids.push(...spa.allowedPackIds)
+    }
+  })
+  return ids
+})
+
+const flawCouponPackIds = computed(() => {
+  const ids: string[] = []
+  spendPointsBetweenActions.value.forEach(spa => {
+    if (spa.type === 'flaws') {
+      ids.push(...spa.allowedPackIds)
+    }
+  })
+  return ids
+})
+
+const pointsSpentOnBackgroundCouponPacks = computed(() => {
+  let total = 0
+  character.value.traitPackUsages?.forEach(usage => {
+    if (backgroundCouponPackIds.value.includes(usage.packID)) {
+      usage.traits?.forEach(t => {
+        if (!t.isLocked) {
+          total += t.customLevel ?? 0
+        }
+      })
+    }
+  })
+  return total
+})
+
+const pointsSpentOnFlawCouponPacks = computed(() => {
+  let total = 0
+  character.value.traitPackUsages?.forEach(usage => {
+    if (flawCouponPackIds.value.includes(usage.packID)) {
+      usage.flawTraits?.forEach(ft => {
+        if (!ft.isLocked) {
+          const pack = v5data.traitPacks?.find(p => p.id === usage.packID)
+          const trait = pack?.packTraits?.find(pt => pt.trait.id === ft.traitID)?.trait
+          if (trait) {
+            total += trait.level
+          }
+        }
+      })
+    }
+  })
+  return total
+})
+
+const totalBackgroundCouponPoints = computed(() => {
+  return spendPointsBetweenActions.value
+    .filter(spa => spa.type === 'backgrounds')
+    .reduce((sum, spa) => sum + spa.bonusPoints, 0)
+})
+
+const totalFlawCouponPoints = computed(() => {
+  return spendPointsBetweenActions.value
+    .filter(spa => spa.type === 'flaws')
+    .reduce((sum, spa) => sum + spa.bonusPoints, 0)
+})
+
+const backgroundCouponRemaining = computed(() => {
+  return Math.max(0, totalBackgroundCouponPoints.value - pointsSpentOnBackgroundCouponPacks.value)
+})
+
+const flawCouponRemaining = computed(() => {
+  return Math.max(0, totalFlawCouponPoints.value - pointsSpentOnFlawCouponPacks.value)
+})
+
+const backgroundCouponExcess = computed(() => {
+  return Math.max(0, pointsSpentOnBackgroundCouponPacks.value - totalBackgroundCouponPoints.value)
+})
+
+const flawCouponExcess = computed(() => {
+  return Math.max(0, pointsSpentOnFlawCouponPacks.value - totalFlawCouponPoints.value)
+})
+
+const predatorTraitActions = computed(() => {
+  if (!selectedPredatorType.value) return { merits: [], backgrounds: [], flaws: [] }
+
+  const merits: { action: V5PredatorAction; description: string }[] = []
+  const backgrounds: { action: V5PredatorAction; description: string }[] = []
+  const flaws: { action: V5PredatorAction; description: string }[] = []
+
+  selectedPredatorType.value.actions.forEach(action => {
+    if (action.type === 'add_merit') {
       merits.push({ action, description: action.description })
+    } else if (action.type === 'add_background' || action.type === 'add_background_points') {
+      backgrounds.push({ action, description: action.description })
     } else if (action.type === 'add_flaw') {
       flaws.push({ action, description: action.description })
     }
   })
 
-  return { merits, flaws }
+  return { merits, backgrounds, flaws }
 })
 
-// Calculate points
+function applyPredatorTraitBonuses() {
+  if (!selectedPredatorType.value || !v5data.traitPacks) return
+
+  const bonusTraits: NonNullable<V5CharacterInternalData['predatorBonusesApplied']>['traits'] = []
+
+  selectedPredatorType.value.actions.forEach(action => {
+    const data = action.data as any
+
+    if (action.type === 'add_merit' || action.type === 'add_background' || action.type === 'add_flaw') {
+      const traitOldVicarID = data?.id
+      const level = data?.level ?? 1
+
+      if (traitOldVicarID) {
+        for (const pack of v5data.traitPacks!) {
+          const packTrait = pack.packTraits?.find(pt => pt.trait.oldVicarID === traitOldVicarID)
+          if (packTrait) {
+            const isFlaw = packTrait.trait.isFlaw || action.type === 'add_flaw'
+
+            addLockedTrait(pack, packTrait.trait.id, level, undefined, isFlaw)
+
+            bonusTraits.push({
+              packID: pack.id,
+              traitID: packTrait.trait.id,
+              level,
+              isFlaw
+            })
+            break
+          }
+        }
+      }
+    }
+  })
+
+  if (bonusTraits.length > 0) {
+    internalData.value = {
+      ...internalData.value,
+      predatorBonusesApplied: {
+        ...internalData.value.predatorBonusesApplied,
+        traits: bonusTraits
+      }
+    }
+  }
+}
+
+function revertPredatorTraitBonuses() {
+  const appliedTraits = internalData.value.predatorBonusesApplied?.traits
+  if (!appliedTraits?.length) return
+
+  appliedTraits.forEach(bonus => {
+    removeLockedTrait(bonus.packID, bonus.traitID, bonus.isFlaw)
+  })
+
+  internalData.value = {
+    ...internalData.value,
+    predatorBonusesApplied: {
+      ...internalData.value.predatorBonusesApplied,
+      traits: []
+    }
+  }
+}
+
+function addLockedTrait(pack: V5TraitPack, traitId: string, level: number, suffix?: string, isFlaw?: boolean) {
+  if (!character.value.traitPackUsages) {
+    character.value.traitPackUsages = []
+  }
+
+  let usageIndex = character.value.traitPackUsages.findIndex(u => u.packID === pack.id)
+
+  if (usageIndex === -1) {
+    character.value.traitPackUsages.push({
+      id: `usage-${pack.id}`,
+      characterID: '',
+      kind: pack.type,
+      packID: pack.id,
+      traits: [],
+      flawTraits: [],
+    })
+    usageIndex = character.value.traitPackUsages.length - 1
+  }
+
+  const usage = character.value.traitPackUsages[usageIndex]!
+
+  if (isFlaw) {
+    if (!usage.flawTraits.some(t => t.traitID === traitId && t.isLocked)) {
+      usage.flawTraits.push({
+        id: `flaw-${traitId}-locked`,
+        usageID: usage.id,
+        traitID: traitId,
+        isLocked: true,
+        isManual: false,
+        customLevel: level,
+        suffix,
+      })
+    }
+  } else {
+    if (!usage.traits.some(t => t.traitID === traitId && t.isLocked)) {
+      usage.traits.push({
+        id: `trait-${traitId}-locked`,
+        usageID: usage.id,
+        traitID: traitId,
+        isLocked: true,
+        isManual: false,
+        customLevel: level,
+        suffix,
+      })
+    }
+  }
+
+  character.value.traitPackUsages = [...character.value.traitPackUsages]
+}
+
+function removeLockedTrait(packId: string, traitId: string, isFlaw?: boolean) {
+  const usage = character.value.traitPackUsages?.find(u => u.packID === packId)
+  if (!usage) return
+
+  if (isFlaw) {
+    const idx = usage.flawTraits.findIndex(t => t.traitID === traitId && t.isLocked)
+    if (idx !== -1) usage.flawTraits.splice(idx, 1)
+  } else {
+    const idx = usage.traits.findIndex(t => t.traitID === traitId && t.isLocked)
+    if (idx !== -1) usage.traits.splice(idx, 1)
+  }
+
+  character.value.traitPackUsages = [...(character.value.traitPackUsages ?? [])]
+}
+
+const totalBackgroundPointsRaw = computed(() => {
+  let total = 0
+  character.value.traitPackUsages?.forEach(usage => {
+    if (usage.kind === 'backgrounds') {
+      usage.traits?.forEach(t => {
+        if (!t.isLocked) {
+          total += t.customLevel ?? 0
+        }
+      })
+    }
+  })
+  return total
+})
+
+const totalBackgroundPoints = computed(() => {
+  const couponCoverage = Math.min(pointsSpentOnBackgroundCouponPacks.value, totalBackgroundCouponPoints.value)
+  return totalBackgroundPointsRaw.value - couponCoverage
+})
+
 const totalMeritPoints = computed(() => {
   let total = 0
   character.value.traitPackUsages?.forEach(usage => {
@@ -82,59 +346,81 @@ const totalMeritPoints = computed(() => {
   return total
 })
 
-const totalBackgroundPoints = computed(() => {
-  let total = 0
-  character.value.traitPackUsages?.forEach(usage => {
-    if (usage.kind === 'backgrounds') {
-      usage.traits?.forEach(t => {
-        if (!t.isLocked) {
-          total += t.customLevel ?? 0
-        }
-      })
-    }
-  })
-  return total
-})
-
-const totalFlawPoints = computed(() => {
+const totalFlawPointsRaw = computed(() => {
   let total = 0
   character.value.traitPackUsages?.forEach(usage => {
     usage.flawTraits?.forEach(ft => {
-      const pack = v5data.traitPacks?.find(p => p.id === usage.packID)
-      const trait = pack?.packTraits?.find(pt => pt.trait.id === ft.traitID)?.trait
-      if (trait) {
-        total += trait.level
+      if (!ft.isLocked) {
+        const pack = v5data.traitPacks?.find(p => p.id === usage.packID)
+        const trait = pack?.packTraits?.find(pt => pt.trait.id === ft.traitID)?.trait
+        if (trait) {
+          total += trait.level
+        }
       }
     })
   })
   return total
 })
 
-// Extra merit points from flaws above minimum
+const totalFlawPoints = computed(() => {
+  const couponCoverage = Math.min(pointsSpentOnFlawCouponPacks.value, totalFlawCouponPoints.value)
+  return totalFlawPointsRaw.value - couponCoverage
+})
+
 const bonusMeritPoints = computed(() => {
   return Math.max(0, totalFlawPoints.value - MIN_FLAW_POINTS)
 })
 
-// Total available merit points
-const availableMeritPoints = computed(() => {
-  return BASE_MERIT_POINTS + bonusMeritPoints.value
+const availableBackgroundPoints = computed(() => {
+  return BASE_BACKGROUND_POINTS
 })
 
-// Points remaining
+const availableMeritPoints = computed(() => {
+  return bonusMeritPoints.value
+})
+
+const availableFlawPoints = computed(() => {
+  return MIN_FLAW_POINTS
+})
+
+const backgroundPointsRemaining = computed(() => {
+  return availableBackgroundPoints.value - totalBackgroundPoints.value
+})
+
 const meritPointsRemaining = computed(() => {
   return availableMeritPoints.value - totalMeritPoints.value
 })
 
 const flawPointsRemaining = computed(() => {
-  return MIN_FLAW_POINTS - totalFlawPoints.value
+  return availableFlawPoints.value - totalFlawPoints.value
 })
 
-// Distribution valid
 const distributionValid = computed(() => {
-  return meritPointsRemaining.value >= 0 && flawPointsRemaining.value <= 0
+  return backgroundPointsRemaining.value >= 0 &&
+         meritPointsRemaining.value >= 0 &&
+         flawPointsRemaining.value <= 0
 })
 
-// Toggle pack expansion
+function isBackgroundCouponPack(packId: string): boolean {
+  return backgroundCouponPackIds.value.includes(packId)
+}
+
+function isFlawCouponPack(packId: string): boolean {
+  return flawCouponPackIds.value.includes(packId)
+}
+
+const backgroundCouponPackNames = computed(() => {
+  return spendPointsBetweenActions.value
+    .filter(spa => spa.type === 'backgrounds')
+    .flatMap(spa => spa.allowedPacks.map(p => p.name))
+})
+
+const flawCouponPackNames = computed(() => {
+  return spendPointsBetweenActions.value
+    .filter(spa => spa.type === 'flaws')
+    .flatMap(spa => spa.allowedPacks.map(p => p.name))
+})
+
 function toggleMeritPack(packId: string) {
   if (expandedMeritPacks.value.has(packId)) {
     expandedMeritPacks.value.delete(packId)
@@ -153,16 +439,6 @@ function toggleBackgroundPack(packId: string) {
   expandedBackgroundPacks.value = new Set(expandedBackgroundPacks.value)
 }
 
-function toggleFlawPack(packId: string) {
-  if (expandedFlawPacks.value.has(packId)) {
-    expandedFlawPacks.value.delete(packId)
-  } else {
-    expandedFlawPacks.value.add(packId)
-  }
-  expandedFlawPacks.value = new Set(expandedFlawPacks.value)
-}
-
-// Helper functions
 function getPackUsage(packId: string): V5CharacterTraitPackUsage | undefined {
   return character.value.traitPackUsages?.find(u => u.packID === packId)
 }
@@ -172,9 +448,19 @@ function isTraitSelected(packId: string, traitId: string): boolean {
   return usage?.traits?.some(t => t.traitID === traitId) ?? false
 }
 
+function isTraitLocked(packId: string, traitId: string): boolean {
+  const usage = getPackUsage(packId)
+  return usage?.traits?.some(t => t.traitID === traitId && t.isLocked) ?? false
+}
+
 function isFlawSelected(packId: string, traitId: string): boolean {
   const usage = getPackUsage(packId)
   return usage?.flawTraits?.some(t => t.traitID === traitId) ?? false
+}
+
+function isFlawLocked(packId: string, traitId: string): boolean {
+  const usage = getPackUsage(packId)
+  return usage?.flawTraits?.some(t => t.traitID === traitId && t.isLocked) ?? false
 }
 
 function getSelectedTraitLevel(packId: string, traitId: string): number | undefined {
@@ -189,9 +475,14 @@ function getSelectedTraitSuffix(packId: string, traitId: string): string | undef
   return trait?.suffix
 }
 
-// Select/toggle trait (merit/background)
 function selectTrait(pack: V5TraitPack, trait: V5Trait, level: number) {
-  // Check if this is a repeatable trait that needs a suffix
+  if (trait.isFlaw) {
+    toggleFlaw(pack, trait.id)
+    return
+  }
+
+  if (isTraitLocked(pack.id, trait.id)) return
+
   if (trait.isRepeatable) {
     currentSuffixTrait.value = { pack, trait, level }
     suffixInput.value = ''
@@ -202,8 +493,9 @@ function selectTrait(pack: V5TraitPack, trait: V5Trait, level: number) {
   applyTrait(pack, trait.id, level, undefined)
 }
 
-// Edit specialization for an existing trait
 function editTraitSuffix(pack: V5TraitPack, trait: V5Trait) {
+  if (isTraitLocked(pack.id, trait.id)) return
+
   const currentLevel = getSelectedTraitLevel(pack.id, trait.id)
   const currentSuffix = getSelectedTraitSuffix(pack.id, trait.id)
   currentSuffixTrait.value = { pack, trait, level: currentLevel ?? trait.level }
@@ -230,37 +522,31 @@ function applyTrait(pack: V5TraitPack, traitId: string, level: number, suffix?: 
     usageIndex = character.value.traitPackUsages.length - 1
   }
 
-  const usage = character.value.traitPackUsages[usageIndex]
+  const usage = character.value.traitPackUsages[usageIndex]!
 
-  // For updates (editing suffix), find by traitId only
-  // For new repeatable traits, find by traitId AND suffix
   const traitIndex = isUpdate
-    ? usage.traits.findIndex(t => t.traitID === traitId)
-    : usage.traits.findIndex(t => t.traitID === traitId && t.suffix === suffix)
+    ? usage.traits.findIndex(t => t.traitID === traitId && !t.isLocked)
+    : usage.traits.findIndex(t => t.traitID === traitId && t.suffix === suffix && !t.isLocked)
 
   if (traitIndex !== -1) {
     if (isUpdate) {
-      // Update the suffix and/or level
       usage.traits[traitIndex] = {
         ...usage.traits[traitIndex],
         customLevel: level,
         suffix: suffix,
-      }
+      } as any
     } else {
-      const existingLevel = usage.traits[traitIndex].customLevel
+      const existingLevel = usage.traits[traitIndex]!.customLevel
       if (existingLevel === level) {
-        // Deselect
         usage.traits.splice(traitIndex, 1)
       } else {
-        // Update level
         usage.traits[traitIndex] = {
           ...usage.traits[traitIndex],
           customLevel: level,
-        }
+        } as any
       }
     }
   } else {
-    // Add new
     usage.traits.push({
       id: `trait-${traitId}-${Date.now()}`,
       usageID: usage.id,
@@ -279,7 +565,6 @@ function confirmSuffix() {
   if (!currentSuffixTrait.value) return
 
   const { pack, trait, level } = currentSuffixTrait.value
-  // Check if this trait already exists (we're editing)
   const isUpdate = isTraitSelected(pack.id, trait.id)
   applyTrait(pack, trait.id, level, suffixInput.value.trim() || undefined, isUpdate)
 
@@ -288,8 +573,9 @@ function confirmSuffix() {
   suffixInput.value = ''
 }
 
-// Select/toggle flaw
 function toggleFlaw(pack: V5TraitPack, traitId: string) {
+  if (isFlawLocked(pack.id, traitId)) return
+
   if (!character.value.traitPackUsages) {
     character.value.traitPackUsages = []
   }
@@ -308,18 +594,18 @@ function toggleFlaw(pack: V5TraitPack, traitId: string) {
     usageIndex = character.value.traitPackUsages.length - 1
   }
 
-  const usage = character.value.traitPackUsages[usageIndex]
-  const flawIndex = usage.flawTraits.findIndex(t => t.traitID === traitId)
+  const usage = character.value.traitPackUsages[usageIndex]!
+  const flawIndex = usage.flawTraits.findIndex(t => t.traitID === traitId && !t.isLocked)
 
   if (flawIndex !== -1) {
-    // Deselect
     usage.flawTraits.splice(flawIndex, 1)
   } else {
-    // Add
     usage.flawTraits.push({
       id: `flaw-${traitId}`,
       usageID: usage.id,
       traitID: traitId,
+      isLocked: false,
+      isManual: true,
     })
   }
 
@@ -341,145 +627,110 @@ function getTraitLevels(pack: V5TraitPack, traitId: string): number[] {
 
   return [trait.level]
 }
-
-// Get all flaws from packs
-const allFlawTraits = computed(() => {
-  const flaws: { pack: V5TraitPack; trait: V5Trait }[] = []
-
-  v5data.traitPacks?.forEach(pack => {
-    pack.packTraits?.forEach(pt => {
-      // Check if trait is a flaw (level is negative or has flaw indicator)
-      // For V5, flaws are typically in certain packs or have specific properties
-      // We'll assume flaws have negative levels or specific pack rules
-      if (pt.trait.level < 0) {
-        flaws.push({ pack, trait: pt.trait })
-      }
-    })
-  })
-
-  return flaws
-})
-
-// Get flaws grouped by pack
-const flawsByPack = computed(() => {
-  const grouped: Map<string, { pack: V5TraitPack; flaws: V5Trait[] }> = new Map()
-
-  v5data.traitPacks?.forEach(pack => {
-    const packFlaws = pack.packTraits?.filter(pt => pt.trait.level < 0).map(pt => pt.trait) ?? []
-    if (packFlaws.length > 0) {
-      grouped.set(pack.id, { pack, flaws: packFlaws })
-    }
-  })
-
-  return grouped
-})
 </script>
 
 <template>
   <div class="traits-step">
-    <!-- Points Overview -->
     <VCard>
       <h2>Punkte-Übersicht</h2>
       <p class="info-text">
-        Du hast {{ BASE_MERIT_POINTS }} Punkte für Vorzüge. Mindestens {{ MIN_FLAW_POINTS }} Punkte musst du in Schwächen investieren.
+        Du hast {{ BASE_BACKGROUND_POINTS }} Punkte für Hintergründe. Mindestens {{ MIN_FLAW_POINTS }} Punkte musst du in Schwächen investieren.
         Für jeden zusätzlichen Schwächenpunkt erhältst du einen weiteren Vorzugspunkt.
       </p>
 
       <div class="points-overview" :class="{ 'points-overview--valid': distributionValid }">
         <div class="points-row">
-          <span class="points-label">Vorzüge:</span>
-          <span class="points-value" :class="{ 'points-value--ok': meritPointsRemaining >= 0, 'points-value--over': meritPointsRemaining < 0 }">
-            {{ totalMeritPoints }} / {{ availableMeritPoints }}
+          <span class="points-label">Hintergründe:</span>
+          <span class="points-value" :class="{ 'points-value--ok': backgroundPointsRemaining >= 0, 'points-value--over': backgroundPointsRemaining < 0 }">
+            {{ totalBackgroundPoints }} / {{ availableBackgroundPoints }}
           </span>
         </div>
         <div class="points-row">
           <span class="points-label">Schwächen:</span>
           <span class="points-value" :class="{ 'points-value--ok': flawPointsRemaining <= 0, 'points-value--under': flawPointsRemaining > 0 }">
-            {{ totalFlawPoints }} / {{ MIN_FLAW_POINTS }}+
+            {{ totalFlawPoints }} / {{ availableFlawPoints }}+
           </span>
         </div>
         <div v-if="bonusMeritPoints > 0" class="points-row points-row--bonus">
-          <span class="points-label">Bonuspunkte:</span>
-          <span class="points-value points-value--bonus">+{{ bonusMeritPoints }}</span>
-        </div>
-        <div class="points-row">
-          <span class="points-label">Hintergründe:</span>
-          <span class="points-value">{{ totalBackgroundPoints }}</span>
+          <span class="points-label">Vorzüge (Bonus):</span>
+          <span class="points-value" :class="{ 'points-value--ok': meritPointsRemaining >= 0, 'points-value--over': meritPointsRemaining < 0 }">
+            {{ totalMeritPoints }} / {{ availableMeritPoints }}
+          </span>
         </div>
       </div>
-    </VCard>
 
-    <!-- Flaws -->
-    <VCard>
-      <h2>Schwächen</h2>
-      <p class="info-text required-hint">Mindestens {{ MIN_FLAW_POINTS }} Punkte erforderlich</p>
+      <div v-if="totalBackgroundCouponPoints > 0 || totalFlawCouponPoints > 0" class="coupon-section">
+        <h3>Jagdverhalten-Gutscheine</h3>
+        <p class="info-text">
+          Diese Punkte kannst du kostenfrei in bestimmten Hintergründen/Schwächen ausgeben.
+          Überschreitest du den Gutscheinwert, zählen die zusätzlichen Punkte gegen dein normales Budget.
+        </p>
 
-      <div v-if="isLoading" class="loading-text">Lade Schwächen...</div>
-      <div v-else-if="flawsByPack.size === 0" class="empty-text">Keine Schwächen verfügbar</div>
-      <div v-else class="packs-list">
-        <div
-          v-for="[packId, packData] in flawsByPack"
-          :key="packId"
-          class="pack-item"
-          :class="{ 'pack-item--expanded': expandedFlawPacks.has(packId) }"
-        >
-          <button
-            type="button"
-            class="pack-header"
-            @click="toggleFlawPack(packId)"
-          >
-            <div class="pack-info">
-              <h3>{{ packData.pack.name }}</h3>
-            </div>
-            <span class="pack-toggle">{{ expandedFlawPacks.has(packId) ? '−' : '+' }}</span>
-          </button>
+        <div v-if="totalBackgroundCouponPoints > 0" class="coupon-item">
+          <div class="coupon-header">
+            <span class="coupon-icon">🎫</span>
+            <span class="coupon-title">Hintergrund-Gutschein</span>
+          </div>
+          <div class="coupon-details">
+            <span class="coupon-packs">Gültig für: {{ backgroundCouponPackNames.join(', ') }}</span>
+            <span class="coupon-value" :class="{ 'coupon-value--used': backgroundCouponRemaining === 0 }">
+              {{ pointsSpentOnBackgroundCouponPacks }} / {{ totalBackgroundCouponPoints }} verwendet
+            </span>
+          </div>
+          <div v-if="backgroundCouponRemaining > 0" class="coupon-remaining">
+            {{ backgroundCouponRemaining }} Gratispunkt(e) übrig
+          </div>
+          <div v-if="backgroundCouponExcess > 0" class="coupon-excess">
+            {{ backgroundCouponExcess }} Punkt(e) über Gutschein (zählt gegen Budget)
+          </div>
+        </div>
 
-          <div v-if="expandedFlawPacks.has(packId)" class="pack-traits">
-            <div
-              v-for="flaw in packData.flaws"
-              :key="flaw.id"
-              class="trait-item trait-item--flaw"
-              :class="{ 'trait-item--selected': isFlawSelected(packId, flaw.id) }"
-            >
-              <div class="trait-info">
-                <div class="trait-header">
-                  <span class="trait-name">{{ flaw.name }}</span>
-                  <span class="trait-level-badge trait-level-badge--flaw">{{ Math.abs(flaw.level) }}</span>
-                </div>
-                <p class="trait-desc">{{ flaw.description }}</p>
-              </div>
-              <button
-                type="button"
-                class="flaw-toggle-btn"
-                :class="{ 'flaw-toggle-btn--selected': isFlawSelected(packId, flaw.id) }"
-                @click="toggleFlaw(packData.pack, flaw.id)"
-              >
-                {{ isFlawSelected(packId, flaw.id) ? '✓' : '+' }}
-              </button>
-            </div>
+        <div v-if="totalFlawCouponPoints > 0" class="coupon-item coupon-item--flaw">
+          <div class="coupon-header">
+            <span class="coupon-icon">🎫</span>
+            <span class="coupon-title">Schwächen-Gutschein</span>
+          </div>
+          <div class="coupon-details">
+            <span class="coupon-packs">Gültig für: {{ flawCouponPackNames.join(', ') }}</span>
+            <span class="coupon-value" :class="{ 'coupon-value--used': flawCouponRemaining === 0 }">
+              {{ pointsSpentOnFlawCouponPacks }} / {{ totalFlawCouponPoints }} verwendet
+            </span>
+          </div>
+          <div v-if="flawCouponRemaining > 0" class="coupon-remaining">
+            {{ flawCouponRemaining }} Gratispunkt(e) übrig
+          </div>
+          <div v-if="flawCouponExcess > 0" class="coupon-excess">
+            {{ flawCouponExcess }} Punkt(e) über Gutschein (zählt gegen Budget)
           </div>
         </div>
       </div>
     </VCard>
 
-    <!-- Predator Type Bonuses -->
-    <VCard v-if="predatorTraits.merits.length > 0 || predatorTraits.flaws.length > 0">
+    <VCard v-if="predatorTraitActions.merits.length > 0 || predatorTraitActions.backgrounds.length > 0 || predatorTraitActions.flaws.length > 0">
       <h2>Jagdverhalten-Boni</h2>
       <p class="info-text">Diese Vorzüge und Schwächen erhältst du durch dein Jagdverhalten automatisch.</p>
 
       <div class="predator-traits">
-        <div v-if="predatorTraits.merits.length > 0" class="predator-section">
+        <div v-if="predatorTraitActions.merits.length > 0" class="predator-section">
           <h4>Vorzüge:</h4>
           <ul class="predator-list">
-            <li v-for="(item, idx) in predatorTraits.merits" :key="`merit-${idx}`">
+            <li v-for="(item, idx) in predatorTraitActions.merits" :key="`merit-${idx}`">
               {{ item.description }}
             </li>
           </ul>
         </div>
-        <div v-if="predatorTraits.flaws.length > 0" class="predator-section">
+        <div v-if="predatorTraitActions.backgrounds.length > 0" class="predator-section">
+          <h4>Hintergründe:</h4>
+          <ul class="predator-list">
+            <li v-for="(item, idx) in predatorTraitActions.backgrounds" :key="`bg-${idx}`">
+              {{ item.description }}
+            </li>
+          </ul>
+        </div>
+        <div v-if="predatorTraitActions.flaws.length > 0" class="predator-section predator-section--flaw">
           <h4>Schwächen:</h4>
           <ul class="predator-list">
-            <li v-for="(item, idx) in predatorTraits.flaws" :key="`flaw-${idx}`">
+            <li v-for="(item, idx) in predatorTraitActions.flaws" :key="`flaw-${idx}`">
               {{ item.description }}
             </li>
           </ul>
@@ -487,9 +738,9 @@ const flawsByPack = computed(() => {
       </div>
     </VCard>
 
-    <!-- Merits -->
-    <VCard>
+    <VCard v-if="bonusMeritPoints > 0">
       <h2>Vorzüge</h2>
+      <p class="info-text">Du hast {{ bonusMeritPoints }} Bonuspunkte durch zusätzliche Schwächen.</p>
 
       <div v-if="isLoading" class="loading-text">Lade Vorzüge...</div>
       <div v-else-if="meritPacks.length === 0" class="empty-text">Keine Vorzüge verfügbar</div>
@@ -514,42 +765,67 @@ const flawsByPack = computed(() => {
 
           <div v-if="expandedMeritPacks.has(pack.id)" class="pack-traits">
             <div
-              v-for="packTrait in pack.packTraits?.filter(pt => pt.trait.level > 0)"
+              v-for="packTrait in pack.packTraits"
               :key="packTrait.id"
               class="trait-item"
-              :class="{ 'trait-item--selected': isTraitSelected(pack.id, packTrait.trait.id) }"
+              :class="{
+                'trait-item--selected': packTrait.trait.isFlaw ? isFlawSelected(pack.id, packTrait.trait.id) : isTraitSelected(pack.id, packTrait.trait.id),
+                'trait-item--locked': packTrait.trait.isFlaw ? isFlawLocked(pack.id, packTrait.trait.id) : isTraitLocked(pack.id, packTrait.trait.id),
+                'trait-item--flaw': packTrait.trait.isFlaw
+              }"
             >
               <div class="trait-info">
                 <div class="trait-header">
                   <span class="trait-name">{{ packTrait.trait.name }}</span>
+                  <span v-if="packTrait.trait.isFlaw" class="type-badge badge--flaw">Schwäche</span>
+                  <span v-else class="type-badge badge--merit">Vorzug</span>
+                  <span v-if="packTrait.trait.isFlaw" class="trait-level-badge trait-level-badge--flaw">{{ packTrait.trait.level }}</span>
                   <span v-if="getSelectedTraitSuffix(pack.id, packTrait.trait.id)" class="trait-suffix">
                     ({{ getSelectedTraitSuffix(pack.id, packTrait.trait.id) }})
                   </span>
+                  <span v-if="packTrait.trait.isFlaw ? isFlawLocked(pack.id, packTrait.trait.id) : isTraitLocked(pack.id, packTrait.trait.id)" class="locked-badge">🔒 Jagdverh.</span>
                 </div>
                 <p class="trait-desc">{{ packTrait.trait.description }}</p>
               </div>
               <div class="trait-actions">
-                <button
-                  v-if="isTraitSelected(pack.id, packTrait.trait.id)"
-                  type="button"
-                  class="suffix-edit-btn"
-                  title="Spezialisierung bearbeiten"
-                  @click.stop="editTraitSuffix(pack, packTrait.trait)"
-                >
-                  ✎
-                </button>
-                <div class="trait-levels">
+                <template v-if="packTrait.trait.isFlaw">
                   <button
-                    v-for="level in getTraitLevels(pack, packTrait.trait.id)"
-                    :key="level"
                     type="button"
-                    class="level-btn"
-                    :class="{ 'level-btn--selected': getSelectedTraitLevel(pack.id, packTrait.trait.id) === level }"
-                    @click="selectTrait(pack, packTrait.trait, level)"
+                    class="flaw-toggle-btn"
+                    :class="{
+                      'flaw-toggle-btn--selected': isFlawSelected(pack.id, packTrait.trait.id),
+                      'flaw-toggle-btn--locked': isFlawLocked(pack.id, packTrait.trait.id)
+                    }"
+                    :disabled="isFlawLocked(pack.id, packTrait.trait.id)"
+                    @click="toggleFlaw(pack, packTrait.trait.id)"
                   >
-                    {{ level }}
+                    {{ isFlawSelected(pack.id, packTrait.trait.id) ? '✓' : '+' }}
                   </button>
-                </div>
+                </template>
+                <template v-else>
+                  <button
+                    v-if="isTraitSelected(pack.id, packTrait.trait.id) && !isTraitLocked(pack.id, packTrait.trait.id)"
+                    type="button"
+                    class="suffix-edit-btn"
+                    title="Spezialisierung bearbeiten"
+                    @click.stop="editTraitSuffix(pack, packTrait.trait)"
+                  >
+                    ✎
+                  </button>
+                  <div class="trait-levels">
+                    <button
+                      v-for="level in getTraitLevels(pack, packTrait.trait.id)"
+                      :key="level"
+                      type="button"
+                      class="level-btn"
+                      :class="{ 'level-btn--selected': getSelectedTraitLevel(pack.id, packTrait.trait.id) === level }"
+                      :disabled="isTraitLocked(pack.id, packTrait.trait.id)"
+                      @click="selectTrait(pack, packTrait.trait, level)"
+                    >
+                      {{ level }}
+                    </button>
+                  </div>
+                </template>
               </div>
             </div>
           </div>
@@ -557,7 +833,6 @@ const flawsByPack = computed(() => {
       </div>
     </VCard>
 
-    <!-- Backgrounds -->
     <VCard>
       <h2>Hintergründe</h2>
 
@@ -573,10 +848,14 @@ const flawsByPack = computed(() => {
           <button
             type="button"
             class="pack-header"
+            :class="{ 'pack-header--coupon': isBackgroundCouponPack(pack.id) || isFlawCouponPack(pack.id) }"
             @click="toggleBackgroundPack(pack.id)"
           >
             <div class="pack-info">
-              <h3>{{ pack.name }}</h3>
+              <h3>
+                {{ pack.name }}
+                <span v-if="isBackgroundCouponPack(pack.id) || isFlawCouponPack(pack.id)" class="coupon-badge">🎫 Gutschein</span>
+              </h3>
               <p v-if="pack.description" class="pack-desc">{{ pack.description }}</p>
             </div>
             <span class="pack-toggle">{{ expandedBackgroundPacks.has(pack.id) ? '−' : '+' }}</span>
@@ -584,42 +863,68 @@ const flawsByPack = computed(() => {
 
           <div v-if="expandedBackgroundPacks.has(pack.id)" class="pack-traits">
             <div
-              v-for="packTrait in pack.packTraits?.filter(pt => pt.trait.level > 0)"
+              v-for="packTrait in pack.packTraits"
               :key="packTrait.id"
               class="trait-item"
-              :class="{ 'trait-item--selected': isTraitSelected(pack.id, packTrait.trait.id) }"
+              :class="{
+                'trait-item--selected': packTrait.trait.isFlaw ? isFlawSelected(pack.id, packTrait.trait.id) : isTraitSelected(pack.id, packTrait.trait.id),
+                'trait-item--locked': packTrait.trait.isFlaw ? isFlawLocked(pack.id, packTrait.trait.id) : isTraitLocked(pack.id, packTrait.trait.id),
+                'trait-item--coupon': isBackgroundCouponPack(pack.id) || isFlawCouponPack(pack.id),
+                'trait-item--flaw': packTrait.trait.isFlaw
+              }"
             >
               <div class="trait-info">
                 <div class="trait-header">
                   <span class="trait-name">{{ packTrait.trait.name }}</span>
+                  <span v-if="packTrait.trait.isFlaw" class="type-badge badge--flaw">Schwäche</span>
+                  <span v-else class="type-badge badge--background">Hintergrund</span>
+                  <span v-if="packTrait.trait.isFlaw" class="trait-level-badge trait-level-badge--flaw">{{ packTrait.trait.level }}</span>
                   <span v-if="getSelectedTraitSuffix(pack.id, packTrait.trait.id)" class="trait-suffix">
                     ({{ getSelectedTraitSuffix(pack.id, packTrait.trait.id) }})
                   </span>
+                  <span v-if="packTrait.trait.isFlaw ? isFlawLocked(pack.id, packTrait.trait.id) : isTraitLocked(pack.id, packTrait.trait.id)" class="locked-badge">🔒 Jagdverh.</span>
                 </div>
                 <p class="trait-desc">{{ packTrait.trait.description }}</p>
               </div>
               <div class="trait-actions">
-                <button
-                  v-if="isTraitSelected(pack.id, packTrait.trait.id)"
-                  type="button"
-                  class="suffix-edit-btn"
-                  title="Spezialisierung bearbeiten"
-                  @click.stop="editTraitSuffix(pack, packTrait.trait)"
-                >
-                  ✎
-                </button>
-                <div class="trait-levels">
+                <template v-if="packTrait.trait.isFlaw">
                   <button
-                    v-for="level in getTraitLevels(pack, packTrait.trait.id)"
-                    :key="level"
                     type="button"
-                    class="level-btn"
-                    :class="{ 'level-btn--selected': getSelectedTraitLevel(pack.id, packTrait.trait.id) === level }"
-                    @click="selectTrait(pack, packTrait.trait, level)"
+                    class="flaw-toggle-btn"
+                    :class="{
+                      'flaw-toggle-btn--selected': isFlawSelected(pack.id, packTrait.trait.id),
+                      'flaw-toggle-btn--locked': isFlawLocked(pack.id, packTrait.trait.id)
+                    }"
+                    :disabled="isFlawLocked(pack.id, packTrait.trait.id)"
+                    @click="toggleFlaw(pack, packTrait.trait.id)"
                   >
-                    {{ level }}
+                    {{ isFlawSelected(pack.id, packTrait.trait.id) ? '✓' : '+' }}
                   </button>
-                </div>
+                </template>
+                <template v-else>
+                  <button
+                    v-if="isTraitSelected(pack.id, packTrait.trait.id) && !isTraitLocked(pack.id, packTrait.trait.id)"
+                    type="button"
+                    class="suffix-edit-btn"
+                    title="Spezialisierung bearbeiten"
+                    @click.stop="editTraitSuffix(pack, packTrait.trait)"
+                  >
+                    ✎
+                  </button>
+                  <div class="trait-levels">
+                    <button
+                      v-for="level in getTraitLevels(pack, packTrait.trait.id)"
+                      :key="level"
+                      type="button"
+                      class="level-btn"
+                      :class="{ 'level-btn--selected': getSelectedTraitLevel(pack.id, packTrait.trait.id) === level }"
+                      :disabled="isTraitLocked(pack.id, packTrait.trait.id)"
+                      @click="selectTrait(pack, packTrait.trait, level)"
+                    >
+                      {{ level }}
+                    </button>
+                  </div>
+                </template>
               </div>
             </div>
           </div>
@@ -627,7 +932,6 @@ const flawsByPack = computed(() => {
       </div>
     </VCard>
 
-    <!-- Suffix Modal -->
     <VModal v-model="showSuffixModal" title="Spezialisierung angeben" size="sm">
       <div v-if="currentSuffixTrait" class="suffix-modal">
         <p>{{ currentSuffixTrait.trait.name }} (Level {{ currentSuffixTrait.level }})</p>
@@ -681,6 +985,10 @@ h4 {
     color: $red-0;
     font-weight: 500;
   }
+
+  strong {
+    color: $text-0;
+  }
 }
 
 .points-overview {
@@ -730,6 +1038,107 @@ h4 {
   }
 }
 
+.coupon-section {
+  margin-top: $s-4;
+  padding-top: $s-4;
+  border-top: 1px dashed $border;
+
+  h3 {
+    margin: 0 0 $s-2;
+    font-family: $font-head;
+    font-size: $fs-1;
+    color: $text-0;
+  }
+
+  .info-text {
+    margin-bottom: $s-3;
+  }
+}
+
+.coupon-item {
+  padding: $s-3;
+  border-radius: $r-md;
+  background: linear-gradient(135deg, rgba(255, 200, 50, 0.08), rgba(255, 180, 50, 0.04));
+  border: 1px dashed rgba(255, 200, 50, 0.4);
+  margin-bottom: $s-3;
+
+  &:last-child {
+    margin-bottom: 0;
+  }
+
+  &--flaw {
+    background: linear-gradient(135deg, rgba(255, 100, 100, 0.08), rgba(255, 80, 80, 0.04));
+    border-color: rgba(255, 100, 100, 0.4);
+  }
+}
+
+.coupon-header {
+  display: flex;
+  align-items: center;
+  gap: $s-2;
+  margin-bottom: $s-2;
+}
+
+.coupon-icon {
+  font-size: 1.2rem;
+}
+
+.coupon-title {
+  font-weight: 600;
+  color: $text-0;
+}
+
+.coupon-details {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: $s-3;
+  flex-wrap: wrap;
+}
+
+.coupon-packs {
+  font-size: 0.85rem;
+  color: $text-2;
+}
+
+.coupon-value {
+  font-weight: 600;
+  color: rgba(255, 200, 50, 0.9);
+  font-size: 0.9rem;
+
+  &--used {
+    color: rgba(100, 200, 100, 0.9);
+  }
+}
+
+.coupon-remaining {
+  margin-top: $s-2;
+  font-size: 0.85rem;
+  color: rgba(255, 200, 50, 0.9);
+  font-weight: 500;
+}
+
+.coupon-excess {
+  margin-top: $s-1;
+  font-size: 0.85rem;
+  color: $red-0;
+  font-weight: 500;
+}
+
+.coupon-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px $s-2;
+  margin-left: $s-2;
+  border-radius: $r-sm;
+  background: rgba(255, 200, 50, 0.15);
+  color: rgba(255, 200, 50, 0.9);
+  font-size: 0.7rem;
+  font-weight: 600;
+  vertical-align: middle;
+}
+
 .predator-traits {
   display: grid;
   gap: $s-3;
@@ -740,6 +1149,11 @@ h4 {
   border-radius: $r-md;
   background: rgba(255, 255, 255, .02);
   border: 1px solid $border;
+
+  &--flaw {
+    border-color: rgba(255, 100, 100, 0.2);
+    background: rgba(255, 100, 100, .04);
+  }
 }
 
 .predator-list {
@@ -795,6 +1209,14 @@ h4 {
   &:hover {
     background: rgba(255, 255, 255, .04);
   }
+
+  &--coupon {
+    background: rgba(255, 200, 50, 0.04);
+
+    &:hover {
+      background: rgba(255, 200, 50, 0.08);
+    }
+  }
 }
 
 .pack-info {
@@ -847,6 +1269,16 @@ h4 {
     background: rgba(255, 59, 84, .06);
   }
 
+  &--locked {
+    opacity: 0.8;
+    background: rgba(255, 59, 84, .04);
+    border-color: rgba(255, 59, 84, 0.3);
+  }
+
+  &--coupon:not(&--selected) {
+    border-color: rgba(255, 200, 50, 0.2);
+  }
+
   &--flaw {
     border-color: rgba(255, 100, 100, 0.2);
   }
@@ -875,6 +1307,39 @@ h4 {
   font-weight: 600;
   color: $text-0;
   font-size: 0.95rem;
+}
+
+.type-badge {
+  padding: 2px $s-2;
+  border-radius: $r-sm;
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+
+  &.badge--merit {
+    background: rgba(100, 200, 100, .15);
+    color: rgba(100, 200, 100, 0.9);
+  }
+
+  &.badge--background {
+    background: rgba(100, 150, 255, .15);
+    color: rgba(100, 150, 255, 0.9);
+  }
+
+  &.badge--flaw {
+    background: rgba(255, 100, 100, .15);
+    color: rgba(255, 100, 100, 0.9);
+  }
+}
+
+.locked-badge {
+  padding: 2px $s-2;
+  border-radius: $r-sm;
+  font-size: 0.7rem;
+  font-weight: 500;
+  background: rgba(255, 59, 84, .12);
+  color: $red-0;
 }
 
 .trait-suffix {
@@ -949,7 +1414,7 @@ h4 {
   font-size: 0.9rem;
   transition: all $t-fast $ease;
 
-  &:hover {
+  &:hover:not(:disabled) {
     border-color: $border-strong;
     background: rgba(255, 255, 255, .04);
   }
@@ -958,6 +1423,11 @@ h4 {
     border-color: $red-0;
     background: rgba(255, 59, 84, .12);
     color: $text-0;
+  }
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
   }
 }
 
@@ -974,7 +1444,7 @@ h4 {
   transition: all $t-fast $ease;
   flex-shrink: 0;
 
-  &:hover {
+  &:hover:not(:disabled) {
     border-color: rgba(255, 100, 100, 0.5);
     background: rgba(255, 100, 100, .08);
   }
@@ -984,9 +1454,13 @@ h4 {
     background: rgba(255, 100, 100, .15);
     color: rgba(255, 100, 100, 0.9);
   }
+
+  &--locked, &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
 }
 
-// Suffix Modal
 .suffix-modal {
   display: grid;
   gap: $s-3;

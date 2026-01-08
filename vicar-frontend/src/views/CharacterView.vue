@@ -45,6 +45,7 @@ const skillLabels: Record<SkillKey, string> = {
   int: 'Einschüchtern',
   lea: 'Anführen',
   per: 'Überzeugen',
+  prf: 'Darbietung',
   sub: 'Gassenwissen',
   str: 'Täuschen',
   aca: 'Akademik',
@@ -182,7 +183,7 @@ function getDisciplineName(disciplineId: string): string {
               <div class="stat-value">{{ character.humanity }}</div>
             </div>
             <div class="stat-item">
-              <span class="stat-label">Blutpotenz</span>
+              <span class="stat-label">Blutmacht</span>
               <div class="stat-value stat-value--potency">{{ character.bloodPotency }}</div>
             </div>
             <div class="stat-item" v-if="character.stains > 0">
