@@ -1,0 +1,82 @@
+name: VicarV3
+
+services:
+  db:
+    image: postgres:15
+    container_name: vicarv3_db
+    env_file:
+      - .env
+    environment:
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASS}
+      POSTGRES_DB: ${DB_NAME}
+    ports:
+      - "26682:5432"
+    volumes:
+      - ./.data/db:/var/lib/postgresql/data
+    networks:
+      - vicarv3_internal
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  redis:
+    image: redis:7
+    container_name: vicarv3_redis
+    env_file:
+      - .env
+    command: ["redis-server", "--requirepass", "${REDIS_PASS}"]
+    ports:
+      - "26683:6379"
+    volumes:
+      - ./.data/redis:/data
+    networks:
+      - vicarv3_internal
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASS}", "PING"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  backend:
+    build:
+      context: ./vicar-backend
+      dockerfile: Dockerfile
+    container_name: vicarv3_backend
+    env_file:
+      - .env
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    ports:
+      - "26681:3000"
+    networks:
+      - vicarv3_internal
+      - vicarv3_public
+    restart: unless-stopped
+
+  nginx:
+    build:
+      context: ./vicar-frontend
+      dockerfile: Dockerfile
+      args:
+        VUE_APP_API_URL: ${VUE_APP_API_URL}
+    container_name: vicarv3_nginx
+    depends_on:
+      - backend
+    ports:
+      - "26680:80"
+    networks:
+      - vicarv3_public
+    restart: unless-stopped
+
+networks:
+  vicarv3_internal:
+    driver: bridge
+    internal: true
+  vicarv3_public:
+    driver: bridge
