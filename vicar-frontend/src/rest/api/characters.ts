@@ -1,6 +1,10 @@
 import { GET, GET_AND_THROW, GET_PAGINATED, POST, POST_AND_THROW, PATCH, DELETE, type PaginationOptions, type PaginationResult } from '@/rest'
 import type { V5Character, V5CharacterCreateRequest, V5CharacterUpdateRequest } from '@/@types/v5'
 
+export async function migrateCharacter(json: any): Promise<V5Character> {
+  return await POST_AND_THROW<V5Character>('/characters/migrate', json)
+}
+
 export async function getCharacters(opts?: PaginationOptions): Promise<PaginationResult<V5Character>> {
   return await GET_PAGINATED<V5Character>('/characters', opts)
 }

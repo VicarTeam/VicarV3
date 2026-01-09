@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, computed, ref } from "vue"
+import {onMounted, computed, ref, onUnmounted} from "vue"
 import { useRoute, useRouter } from "vue-router"
 import { useCharactersStore } from "@/stores/characters"
 import { useV5DataStore } from "@/stores/v5data"
@@ -11,12 +11,24 @@ import VDotRating from "@/components/characters/VDotRating.vue"
 import VTracker from "@/components/characters/VTracker.vue"
 import VHumanityTracker from "@/components/characters/VHumanityTracker.vue"
 import VHungerTracker from "@/components/characters/VHungerTracker.vue"
-import type { AttributeKey, SkillKey, CategoryKey, Resonance, V5DisciplineAbility } from "@/@types/v5"
+import type {
+  AttributeKey,
+  SkillKey,
+  CategoryKey,
+  Resonance,
+  V5DisciplineAbility,
+  V5BloodRitual,
+  V5OblivionCeremony
+} from "@/@types/v5"
 import VCharacterReadyAlert from "@/components/characters/VCharacterReadyAlert.vue";
 import VExperienceBox from "@/components/characters/VExperienceBox.vue";
 import VLevelHistoryModal from "@/components/characters/VLevelHistoryModal.vue";
 import VCharacterViewersModal from "@/components/characters/VCharacterViewersModal.vue";
 import VInventoryBox from "@/components/characters/VInventoryBox.vue";
+import {resetTitle, useTitle} from "@/composables/useTitle.ts";
+import VDisciplineAbilityInfoModal from "@/components/characters/VDisciplineAbilityInfoModal.vue";
+import VBloodRitualInfoModal from "@/components/characters/VBloodRitualInfoModal.vue";
+import VOblivionCeremonyInfoModal from "@/components/characters/VOblivionCeremonyInfoModal.vue";
 
 const route = useRoute()
 const router = useRouter()
@@ -28,6 +40,15 @@ const isSaving = ref(false)
 
 const showHistory = ref(false)
 const showViewers = ref(false)
+
+const abilityModalOpen = ref(false)
+const selectedAbility = ref<V5DisciplineAbility | null>(null)
+
+const bloodRitualModalOpen = ref(false)
+const selectedBloodRitual = ref<V5BloodRitual | null>(null)
+
+const oblivionCeremonyModalOpen = ref(false)
+const selectedOblivionCeremony = ref<V5OblivionCeremony | null>(null)
 
 const characterId = computed(() => route.params.id as string)
 const character = computed({
@@ -115,35 +136,33 @@ const predatorType = computed(() => {
   return v5data.getPredatorTypeById(character.value.predatorTypeID)
 })
 
-function getDisciplineData(disciplineId: string) {
-  if (v5data.disciplines) {
-    const disc = v5data.disciplines.find((d) => d.id === disciplineId)
-    if (disc) return disc
+const predatorBonusTraitsForDisplay = computed(() => {
+  const bonuses = getPredatorBonusTraits()
+
+  console.log(bonuses)
+
+  return bonuses.filter(b => !characterHasTrait(b.packID, b.traitID, b.isFlaw))
+})
+
+const traitPackUsagesForDisplay = computed(() => {
+  const usages = character.value?.traitPackUsages ? [...character.value.traitPackUsages] : []
+
+  const packsNeeded = new Set(predatorBonusTraitsForDisplay.value.map(b => b.packID))
+  for (const packID of packsNeeded) {
+    if (!usages.some(u => u.packID === packID)) {
+      usages.push({
+        id: `usage-display-${packID}`,
+        characterID: characterId.value,
+        kind: (v5data.traitPacks?.find(p => p.id === packID)?.type as any) ?? "merits",
+        packID,
+        traits: [],
+        flawTraits: []
+      } as any)
+    }
   }
-  if (!character.value?.clanID) return null
-  const selectedClan = v5data.getClanById(character.value.clanID)
-  return selectedClan?.disciplines?.find((d) => d.id === disciplineId) ?? null
-}
 
-function getAbilityData(disciplineId: string, abilityId: string): V5DisciplineAbility | null {
-  const disc = getDisciplineData(disciplineId)
-  return disc?.abilities?.find((a) => a.id === abilityId) ?? null
-}
-
-function getDisciplineName(disciplineId: string): string {
-  return getDisciplineData(disciplineId)?.name ?? "Unbekannt"
-}
-
-function getSelectedAbilities(disciplineId: string, abilities: { abilityID: string; level: number }[]) {
-  const disc = getDisciplineData(disciplineId)
-  if (!disc) return []
-  return abilities
-    .map((a) => {
-      const ability = disc.abilities?.find((ab) => ab.id === a.abilityID)
-      return ability ? { ...ability, usedLevel: a.level } : null
-    })
-    .filter(Boolean) as (V5DisciplineAbility & { usedLevel: number })[]
-}
+  return usages
+})
 
 const calculatedHealth = computed(() => {
   if (!character.value) return 0
@@ -249,8 +268,46 @@ onMounted(async () => {
   if (characterId.value) {
     await store.fetchCharacter(characterId.value)
   }
+
+  if (character.value) {
+    useTitle(character.value.name)
+  }
   isLoading.value = false
 })
+
+onUnmounted(() => {
+  resetTitle()
+})
+
+function getDisciplineData(disciplineId: string) {
+  if (v5data.disciplines) {
+    const disc = v5data.disciplines.find((d) => d.id === disciplineId)
+    if (disc) return disc
+  }
+  if (!character.value?.clanID) return null
+  const selectedClan = v5data.getClanById(character.value.clanID)
+  return selectedClan?.disciplines?.find((d) => d.id === disciplineId) ?? null
+}
+
+function getAbilityData(disciplineId: string, abilityId: string): V5DisciplineAbility | null {
+  const disc = getDisciplineData(disciplineId)
+  return disc?.abilities?.find((a) => a.id === abilityId) ?? null
+}
+
+function getDisciplineName(disciplineId: string): string {
+  return getDisciplineData(disciplineId)?.name ?? "Unbekannt"
+}
+
+function getSelectedAbilities(disciplineId: string, abilities: { abilityID: string; level: number }[]) {
+  const disc = getDisciplineData(disciplineId)
+  if (!disc) return []
+  return abilities
+    .map((a) => {
+      const ability = disc.abilities?.find((ab) => ab.id === a.abilityID)
+      return ability ? { ...ability, usedLevel: a.level } : null
+    })
+    .filter(Boolean) as (V5DisciplineAbility & { usedLevel: number })[]
+}
 
 let saveTimeout: ReturnType<typeof setTimeout> | null = null
 
@@ -284,6 +341,11 @@ function getSkillsByCategory(category: CategoryKey) {
 function getTraitPackName(packId: string): string {
   const pack = v5data.traitPacks?.find((p) => p.id === packId)
   return pack?.name ?? "Unbekannt"
+}
+
+function getTrackPackSummary(packId: string): string {
+  const pack = v5data.traitPacks?.find((p) => p.id === packId)
+  return pack?.description ?? "";
 }
 
 function getTraitInfo(packId: string, traitId: string): { name: string; isFlaw: boolean; description: string } {
@@ -384,6 +446,93 @@ function saveExperience() {
   if (!character.value) return
   saveField("exp", character.value.exp)
 }
+
+function openAbilityInfo(ability: V5DisciplineAbility) {
+  selectedAbility.value = ability
+  abilityModalOpen.value = true
+}
+
+function openBloodRitualInfo(ritual: V5BloodRitual) {
+  selectedBloodRitual.value = ritual
+  bloodRitualModalOpen.value = true
+}
+
+function openOblivionCeremonyInfo(ceremony: V5OblivionCeremony) {
+  selectedOblivionCeremony.value = ceremony
+  oblivionCeremonyModalOpen.value = true
+}
+
+function getPredatorBonusTraits() {
+  const predatorId = character.value?.predatorTypeID
+  if (!predatorId || !v5data.predatorTypes || !v5data.traitPacks) return []
+
+  const predator = v5data.predatorTypes.find(p => p.id === predatorId)
+  if (!predator) return []
+
+  const bonusActions = predator.actions.filter(a =>
+    a.type === "add_merit" || a.type === "add_background" || a.type === "add_flaw"
+  )
+
+  const bonuses: { packID: string; traitID: string; isFlaw: boolean; level?: number, suffix?: string }[] = []
+
+  for (const action of bonusActions) {
+    const data = action.data as any
+    let traitOldVicarID: number | null = null
+    let flawId: number | null = null
+    let flawType: string | null = null
+    let suffix: string | undefined = undefined
+    if (action.type === "add_background" || action.type === "add_merit") {
+      const levelId = data?.levelId as number | null
+      const traitId = (action.type === "add_merit" ? data?.meritId : data?.backgroundId) as number | null
+      if (!traitId || !levelId) continue
+      traitOldVicarID = traitId * 1000 + levelId
+    } else {
+      const choices = data?.choices as Array<{ id: number; type: 'background'|'merit'; flawId: number; suffix?: string }> | null
+      if (choices) {
+        if (choices.length === 1) {
+          const choice = choices[0]!
+          traitOldVicarID = choice.id
+          suffix = choice.suffix ?? undefined
+          flawId = choice.flawId ?? null
+          flawType = choice.type + 's'
+        } else {
+
+        }
+      }
+    }
+
+    if (!traitOldVicarID) continue
+    const isFlaw = action.type === "add_flaw"
+
+    for (const pack of v5data.traitPacks) {
+      if (isFlaw) {
+        if (pack.oldVicarID === traitOldVicarID && pack.type === flawType) {
+          const packTrait = pack.packTraits?.find(pt => pt.trait.level === flawId && pt.trait.isFlaw)
+          if (!packTrait) continue
+          bonuses.push({ packID: pack.id, traitID: packTrait.trait.id, isFlaw, level: flawId!, suffix: suffix })
+        }
+        continue
+      }
+
+      const packTrait = pack.packTraits?.find(pt => pt.trait.oldVicarID === traitOldVicarID)
+      if (!packTrait) continue
+      const level = data?.level ?? packTrait.trait.level
+      bonuses.push({ packID: pack.id, traitID: packTrait.trait.id, isFlaw, level, suffix: suffix })
+      break
+    }
+  }
+
+  return bonuses
+}
+
+function characterHasTrait(packID: string, traitID: string, isFlaw: boolean) {
+  const usage = character.value?.traitPackUsages?.find(u => u.packID === packID)
+  if (!usage) return false
+  return isFlaw
+    ? usage.flawTraits?.some(t => t.traitID === traitID) ?? false
+    : usage.traits?.some(t => t.traitID === traitID) ?? false
+}
+
 </script>
 
 <template>
@@ -392,6 +541,10 @@ function saveExperience() {
   </div>
 
   <div class="character-view" v-else-if="!!character">
+    <VDisciplineAbilityInfoModal v-model="abilityModalOpen" :ability="selectedAbility" />
+    <VBloodRitualInfoModal v-model="bloodRitualModalOpen" :ritual="selectedBloodRitual" />
+    <VOblivionCeremonyInfoModal v-model="oblivionCeremonyModalOpen" :ceremony="selectedOblivionCeremony" />
+
     <div class="character-view__header">
       <div class="header-left">
         <VButton variant="ghost" @click="router.push('/')">← Zurück</VButton>
@@ -546,58 +699,6 @@ function saveExperience() {
         </VCard>
       </div>
 
-      <VCard>
-        <h2>Chronik & Geschichte</h2>
-        <div class="chronicle-grid">
-          <VInput
-            label="Chronik"
-            :model-value="character.chronicle"
-            @update:model-value="updateTextField('chronicle', $event as string)"
-            placeholder="Name der Chronik…"
-          />
-          <VInput
-            label="Sire"
-            :model-value="character.sire"
-            @update:model-value="updateTextField('sire', $event as string)"
-            placeholder="Name des Sires…"
-          />
-          <VInput
-            label="Ehrgeiz"
-            :model-value="character.ambition"
-            @update:model-value="updateTextField('ambition', $event as string)"
-            placeholder="Langfristiges Ziel…"
-          />
-          <VInput
-            label="Begehren"
-            :model-value="character.desire"
-            @update:model-value="updateTextField('desire', $event as string)"
-            placeholder="Kurzfristiges Verlangen…"
-          />
-          <VTextarea
-            label="Chronikprinzipien"
-            :model-value="character.chroniclePrinciples"
-            @update:model-value="updateTextField('chroniclePrinciples', $event)"
-            placeholder="Die Prinzipien der Chronik…"
-            :rows="3"
-          />
-          <VTextarea
-            label="Anker & Überzeugungen"
-            :model-value="character.anchorsAndBeliefs"
-            @update:model-value="updateTextField('anchorsAndBeliefs', $event)"
-            placeholder="Wichtige Überzeugungen und Anker…"
-            :rows="3"
-          />
-          <VTextarea
-            class="full-width"
-            label="Hintergrundgeschichte"
-            :model-value="character.backstory"
-            @update:model-value="updateTextField('backstory', $event)"
-            placeholder="Die Geschichte deines Charakters…"
-            :rows="6"
-          />
-        </div>
-      </VCard>
-
       <VCard v-if="character.attributes && character.attributes.length > 0">
         <h2>Attribute</h2>
         <div class="attributes-grid">
@@ -650,7 +751,7 @@ function saveExperience() {
                 <div class="ability-header">
                   <span class="ability-level">{{ ability.level }}</span>
                   <span class="ability-name">{{ ability.name }}</span>
-                  <span class="ability-pill">Details</span>
+                  <span class="ability-pill" @click="openAbilityInfo(ability)">Details</span>
                 </div>
                 <p class="ability-summary" v-if="ability.summary">{{ ability.summary }}</p>
                 <div class="ability-details">
@@ -670,50 +771,21 @@ function saveExperience() {
         </div>
       </VCard>
 
-      <VCard v-if="character.traitPackUsages && character.traitPackUsages.length > 0">
-        <h2>Vorzüge & Hintergründe</h2>
-        <div class="traits-section">
-          <div v-for="usage in character.traitPackUsages" :key="usage.id" class="trait-pack">
-            <h3>{{ getTraitPackName(usage.packID) }}</h3>
-            <div class="traits-list">
-              <div v-for="trait in usage.traits" :key="trait.id" class="trait-item">
-                <div class="trait-main">
-                  <span class="trait-name">{{ getTraitInfo(usage.packID, trait.traitID).name }}</span>
-                  <span v-if="getTraitInfo(usage.packID, trait.traitID).isFlaw" class="trait-badge trait-badge--flaw">
-                    Schwäche
-                  </span>
-                </div>
-                <span class="trait-level" v-if="trait.customLevel">{{ trait.customLevel }}</span>
-              </div>
-
-              <div v-for="flaw in usage.flawTraits" :key="flaw.id" class="trait-item trait-item--flaw">
-                <div class="trait-main">
-                  <span class="trait-name">{{ getTraitInfo(usage.packID, flaw.traitID).name }}</span>
-                  <span class="trait-badge trait-badge--flaw">Schwäche</span>
-                </div>
-                <span class="trait-level trait-level--flaw" v-if="flaw.customLevel">{{ flaw.customLevel }}</span>
-              </div>
-            </div>
-          </div>
-        </div>
-      </VCard>
-
       <VCard v-if="hasBloodSorcery">
         <h2>Blutrituale</h2>
         <p class="section-info">Verfügbar bis Level {{ bloodSorceryLevel }}</p>
 
-        <div class="rituals-list" v-if="character.bloodRituals && character.bloodRituals.length > 0">
-          <div v-for="ritual in character.bloodRituals" :key="ritual.id" class="ritual-item">
+        <div class="rituals-list" v-if="availableBloodRituals.length > 0">
+          <div v-for="ritual in availableBloodRituals" :key="ritual.id" class="ritual-item">
             <div class="ritual-header">
               <span class="ritual-name">{{ ritual.name }}</span>
-              <span class="ritual-level">Level {{ ritual.level }}</span>
+              <div style="display: flex; gap: 0.5rem">
+                <span class="ritual-level">Level {{ ritual.level }}</span>
+                <span class="ritual-level" style="cursor: pointer" @click="openBloodRitualInfo(ritual)">Details</span>
+              </div>
             </div>
             <p class="ritual-desc">{{ ritual.description }}</p>
           </div>
-        </div>
-
-        <div v-else-if="availableBloodRituals.length > 0" class="rituals-available">
-          <p class="empty-note">Keine Rituale ausgewählt. {{ availableBloodRituals.length }} Rituale verfügbar.</p>
         </div>
 
         <div v-else class="empty-note">
@@ -725,18 +797,17 @@ function saveExperience() {
         <h2>Vergessenheitszeremonien</h2>
         <p class="section-info">Verfügbar bis Level {{ oblivionLevel }}</p>
 
-        <div class="rituals-list" v-if="character.oblivionCeremonies && character.oblivionCeremonies.length > 0">
-          <div v-for="ceremony in character.oblivionCeremonies" :key="ceremony.id" class="ritual-item">
+        <div class="rituals-list" v-if="availableOblivionCeremonies.length > 0">
+          <div v-for="ceremony in availableOblivionCeremonies" :key="ceremony.id" class="ritual-item">
             <div class="ritual-header">
               <span class="ritual-name">{{ ceremony.name }}</span>
-              <span class="ritual-level">Level {{ ceremony.level }}</span>
+              <div style="display: flex; gap: 0.5rem">
+                <span class="ritual-level">Level {{ ceremony.level }}</span>
+                <span class="ritual-level" style="cursor: pointer" @click="openOblivionCeremonyInfo(ceremony)">Details</span>
+              </div>
             </div>
             <p class="ritual-desc">{{ ceremony.summary }}</p>
           </div>
-        </div>
-
-        <div v-else-if="availableOblivionCeremonies.length > 0" class="rituals-available">
-          <p class="empty-note">Keine Zeremonien ausgewählt. {{ availableOblivionCeremonies.length }} Zeremonien verfügbar.</p>
         </div>
 
         <div v-else class="empty-note">
@@ -744,10 +815,155 @@ function saveExperience() {
         </div>
       </VCard>
 
+      <VCard
+        v-if="(character.traitPackUsages && character.traitPackUsages.length > 0) || predatorBonusTraitsForDisplay.length > 0"
+      >
+      <h2>Vorzüge & Hintergründe</h2>
+        <div class="traits-section">
+          <div v-for="usage in traitPackUsagesForDisplay" :key="usage.id" class="trait-pack">
+            <h3>{{ getTraitPackName(usage.packID) }}</h3>
+            <small class="pack-summary">{{ getTrackPackSummary(usage.packID) }}</small>
+            <div class="traits-list">
+              <div
+                v-for="bonus in predatorBonusTraitsForDisplay.filter(b => b.packID === usage.packID && !b.isFlaw)"
+                :key="`pred-${bonus.packID}-${bonus.traitID}`"
+                class="trait-item"
+              >
+                <div style="display: flex; justify-content: space-between; align-items: center; gap: 0.5rem; flex: 1">
+                  <div class="trait-main">
+                    <span class="trait-name">
+                      {{ getTraitInfo(usage.packID, bonus.traitID).name }}
+                      <small v-if="bonus.suffix" class="trait-suffix">({{bonus.suffix}})</small>
+                    </span>
+                    <span class="trait-badge" style="background: rgba(255, 200, 50, 0.12); color: rgba(255, 200, 50, 0.95);">
+                      Jagdverh.
+                    </span>
+                  </div>
+                  <span class="trait-level">{{ bonus.level ?? "—" }}</span>
+                </div>
+                <small class="trait-description">
+                  {{ getTraitInfo(usage.packID, bonus.traitID).description }}
+                </small>
+              </div>
+
+              <div
+                v-for="bonus in predatorBonusTraitsForDisplay.filter(b => b.packID === usage.packID && b.isFlaw)"
+                :key="`predflaw-${bonus.packID}-${bonus.traitID}`"
+                class="trait-item trait-item--flaw"
+              >
+                <div style="display: flex; justify-content: space-between; align-items: center; gap: 0.5rem; flex: 1">
+                  <div class="trait-main">
+                  <span class="trait-name">
+                    {{ getTraitInfo(usage.packID, bonus.traitID).name }}
+                    <small v-if="bonus.suffix" class="trait-suffix">({{bonus.suffix}})</small>
+                  </span>
+                    <span class="trait-badge trait-badge--flaw">Schwäche</span>
+                    <span class="trait-badge" style="background: rgba(255, 200, 50, 0.12); color: rgba(255, 200, 50, 0.95);">
+                    Jagdverh.
+                  </span>
+                  </div>
+                  <span class="trait-level trait-level--flaw">{{ bonus.level ?? "—" }}</span>
+                </div>
+                <small class="trait-description">
+                  {{ getTraitInfo(usage.packID, bonus.traitID).description }}
+                </small>
+              </div>
+
+              <div v-for="trait in usage.traits" :key="trait.id" class="trait-item">
+                <div style="display: flex; justify-content: space-between; align-items: center; gap: 0.5rem; flex: 1">
+                  <div class="trait-main">
+                    <span class="trait-name">
+                      {{ getTraitInfo(usage.packID, trait.traitID).name }}
+                      <small v-if="trait.suffix" class="trait-suffix">({{trait.suffix}})</small></span>
+                    <span v-if="getTraitInfo(usage.packID, trait.traitID).isFlaw" class="trait-badge trait-badge--flaw">
+                      Schwäche
+                    </span>
+                  </div>
+                  <span class="trait-level" v-if="trait.customLevel">{{ trait.customLevel }}</span>
+                </div>
+                <small class="trait-description">
+                  {{ getTraitInfo(usage.packID, trait.traitID).description }}
+                </small>
+              </div>
+
+              <div v-for="flaw in usage.flawTraits" :key="flaw.id" class="trait-item trait-item--flaw">
+                <div style="display: flex; justify-content: space-between; align-items: center; gap: 0.5rem; flex: 1">
+                  <div class="trait-main">
+                    <span class="trait-name">
+                      {{ getTraitInfo(usage.packID, flaw.traitID).name }}
+                      <small v-if="flaw.suffix" class="trait-suffix">({{flaw.suffix}})</small>
+                    </span>
+                    <span class="trait-badge trait-badge--flaw">Schwäche</span>
+                  </div>
+                  <span class="trait-level trait-level--flaw" v-if="flaw.customLevel">{{ flaw.customLevel }}</span>
+                </div>
+                <small class="trait-description">
+                  {{ getTraitInfo(usage.packID, flaw.traitID).description }}
+                </small>
+              </div>
+            </div>
+          </div>
+        </div>
+      </VCard>
+
       <VInventoryBox
         v-model="character"
         @update-inventory="(inv) => saveField('inventory', inv)"
       />
+
+
+
+      <VCard>
+        <h2>Chronik & Geschichte</h2>
+        <div class="chronicle-grid">
+          <VInput
+            label="Chronik"
+            :model-value="character.chronicle"
+            @update:model-value="updateTextField('chronicle', $event as string)"
+            placeholder="Name der Chronik…"
+          />
+          <VInput
+            label="Sire"
+            :model-value="character.sire"
+            @update:model-value="updateTextField('sire', $event as string)"
+            placeholder="Name des Sires…"
+          />
+          <VInput
+            label="Ehrgeiz"
+            :model-value="character.ambition"
+            @update:model-value="updateTextField('ambition', $event as string)"
+            placeholder="Langfristiges Ziel…"
+          />
+          <VInput
+            label="Begehren"
+            :model-value="character.desire"
+            @update:model-value="updateTextField('desire', $event as string)"
+            placeholder="Kurzfristiges Verlangen…"
+          />
+          <VTextarea
+            label="Chronikprinzipien"
+            :model-value="character.chroniclePrinciples"
+            @update:model-value="updateTextField('chroniclePrinciples', $event)"
+            placeholder="Die Prinzipien der Chronik…"
+            :rows="3"
+          />
+          <VTextarea
+            label="Anker & Überzeugungen"
+            :model-value="character.anchorsAndBeliefs"
+            @update:model-value="updateTextField('anchorsAndBeliefs', $event)"
+            placeholder="Wichtige Überzeugungen und Anker…"
+            :rows="3"
+          />
+          <VTextarea
+            class="full-width"
+            label="Hintergrundgeschichte"
+            :model-value="character.backstory"
+            @update:model-value="updateTextField('backstory', $event)"
+            placeholder="Die Geschichte deines Charakters…"
+            :rows="6"
+          />
+        </div>
+      </VCard>
 
       <VCard>
         <h2>Notizen</h2>
@@ -769,7 +985,7 @@ function saveExperience() {
   </div>
 
   <VLevelHistoryModal v-model="showHistory" :character="character as any" />
-  <VCharacterViewersModal v-model="showViewers" :character="character as any" :readonly="false" />
+  <VCharacterViewersModal v-model="showViewers" :character="character as any" :readonly="!character?.isOwner" />
 </template>
 
 <style scoped lang="scss">
@@ -1191,8 +1407,14 @@ function saveExperience() {
 
 .trait-pack {
   h3 {
-    margin-bottom: $s-2;
+    margin-bottom: 0;
+    padding-bottom: 0;
+  }
+  .pack-summary {
+    display: block;
+    margin-bottom: $s-3;
     padding-bottom: $s-2;
+    color: $text-2;
     border-bottom: 1px solid $border;
   }
 }
@@ -1204,8 +1426,8 @@ function saveExperience() {
 
 .trait-item {
   display: flex;
-  justify-content: space-between;
-  align-items: center;
+  flex-direction: column;
+  justify-content: center;
   padding: $s-2 $s-3;
   border-radius: $r-sm;
   background: rgba(255, 255, 255, 0.02);

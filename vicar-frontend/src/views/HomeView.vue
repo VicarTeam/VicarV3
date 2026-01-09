@@ -5,10 +5,15 @@ import { useCharactersStore } from '@/stores/characters'
 import VCard from '@/components/ui/VCard.vue'
 import VButton from '@/components/ui/VButton.vue'
 import CharacterCreateDialog from '@/components/characters/CharacterCreateDialog.vue'
+import {useToast} from "@/composables/useToast.ts";
+import {migrateCharacter} from "@/rest/api/characters.ts";
 
 const router = useRouter()
 const store = useCharactersStore()
+const toast = useToast()
+
 const showCreateDialog = ref(false)
+const importFiles = ref<HTMLInputElement|null>(null)
 
 onMounted(() => {
   store.fetchCharacters()
@@ -22,15 +27,44 @@ function onCreate(characterId: string) {
   showCreateDialog.value = false
   router.push(`/characters/${characterId}/edit`)
 }
+
+async function importChar(event: Event) {
+  const input = event.target as HTMLInputElement
+  if (input.files) {
+    const file = input.files[0]!
+    try {
+      const text = await file.text()
+      const charData = JSON.parse(text)
+      const newChar = await migrateCharacter(charData)
+      store.characters.push(newChar)
+      toast.success('Charakter erfolgreich importiert.')
+    } catch (e) {
+      console.error(e)
+      toast.error('Fehler beim Importieren des Charakters.')
+    } finally {
+      if (importFiles.value) {
+        importFiles.value.value = ''
+      }
+    }
+  }
+}
 </script>
 
 <template>
   <div class="home">
     <div class="home__header">
       <h1>Meine Charaktere</h1>
-      <VButton variant="primary" @click="showCreateDialog = true">
-        Neuen Charakter erstellen
-      </VButton>
+      <div style="display: flex; gap: 0.5rem">
+<!--        <VButton variant="ghost" @click="importFiles?.click()">
+          Charakter v1 importieren
+        </VButton>-->
+
+        <VButton variant="primary" @click="showCreateDialog = true">
+          Neuen Charakter erstellen
+        </VButton>
+
+        <input type="file" accept=".json" style="display: none" ref="importFiles" @change="importChar($event)" />
+      </div>
     </div>
 
     <div v-if="store.loading" class="home__loading">

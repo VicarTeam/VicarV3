@@ -1,5 +1,5 @@
 ﻿import type {User} from "@/@types/user.ts";
-import {DELETE, GET, PATCH, POST} from "@/rest";
+import {DELETE, GET, GET_AND_THROW, PATCH, POST} from "@/rest";
 
 export async function getUser(id: string = "@me", inAdminView: boolean = false): Promise<User|null> {
   return await GET<User>(`/users/${id}`, {view: inAdminView ? "admin" : undefined});
@@ -58,4 +58,10 @@ export async function setUserUsername(userId: string, username: string): Promise
 export async function setUserPassword(userId: string, password: string, oldPassword: string): Promise<boolean> {
   const res = await PATCH(`/users/${userId}/password`, {password, oldPassword});
   return !!res;
+}
+
+export async function autocompleteUsers(search: string): Promise<User[]> {
+  const q = (search ?? "").trim()
+  if (q.length < 3) return []
+  return await GET_AND_THROW<User[]>(`/users/autocomplete?search=${encodeURIComponent(q)}`)
 }

@@ -5,7 +5,7 @@ import VButton from "@/components/ui/VButton.vue"
 import VInput from "@/components/ui/VInput.vue"
 import VTextarea from "@/components/ui/VTextarea.vue"
 import VModal from "@/components/ui/VModal.vue"
-import type {InventorySide, V5Character, V5Inventory, V5InventoryItem} from "@/@types/v5"
+import type { InventorySide, V5Character, V5Inventory, V5InventoryItem } from "@/@types/v5"
 
 const props = defineProps<{
   modelValue: Partial<V5Character>
@@ -33,6 +33,9 @@ const showZeroModal = ref(false)
 const zeroItemName = ref("")
 const zeroConfirm = ref<null | (() => void)>(null)
 
+const cashRaw = ref("")
+const bankRaw = ref("")
+
 const inventory = computed<V5Inventory>(() => {
   const inv = (props.modelValue as any).inventory as V5Inventory | undefined
   return {
@@ -52,6 +55,8 @@ watch(
       emit("update:modelValue", next)
       emit("update-inventory", next.inventory)
     }
+    cashRaw.value = String(inventory.value.cash ?? 0)
+    bankRaw.value = String(inventory.value.bank ?? 0)
   },
   { immediate: true, deep: true }
 )
@@ -68,10 +73,84 @@ function toNumberSafe(v: any): number {
   return Number.isFinite(n) ? n : 0
 }
 
-function updateMoney(key: "cash" | "bank", raw: any) {
+function evalMoneyExpression(input: string, base: number, allowNegative = false): number {
+  let s = String(input ?? "").trim()
+  if (!s) return base
+
+  s = s.replace(/,/g, ".")
+  s = s.replace(/[^0-9.+\-*/() ]/g, "")
+  s = s.replace(/\s+/g, "")
+  if (!s) return base
+
+  if (/^[+\-*/]/.test(s)) s = `${base}${s}`
+
+  try {
+    // eslint-disable-next-line no-new-func
+    const fn = new Function(`return (${s});`)
+    const result = Number(fn())
+    if (!Number.isFinite(result)) return base
+    const floored = Math.floor(result)
+    if (!allowNegative) return Math.max(0, floored)
+    return floored
+  } catch {
+    return base
+  }
+}
+
+function commitMoney(key: "cash" | "bank") {
   if (props.readonly) return
-  const nextInv = { ...inventory.value, [key]: Math.max(0, toNumberSafe(raw)) }
+  const base = inventory.value[key] ?? 0
+  const raw = key === "cash" ? cashRaw.value : bankRaw.value
+
+  const nextVal = evalMoneyExpression(raw, base, false)
+  const nextInv = { ...inventory.value, [key]: nextVal }
   setInventory(nextInv)
+
+  if (key === "cash") cashRaw.value = String(nextVal)
+  else bankRaw.value = String(nextVal)
+}
+
+function onMoneyFocus(key: "cash" | "bank") {
+  if (key === "cash") cashRaw.value = String(inventory.value.cash ?? 0)
+  else bankRaw.value = String(inventory.value.bank ?? 0)
+}
+
+function onMoneyKeydown(key: "cash" | "bank", ev: KeyboardEvent) {
+  if (ev.key === "Enter") {
+    ev.preventDefault()
+    commitMoney(key)
+    ;(ev.target as HTMLInputElement)?.blur?.()
+  }
+}
+
+function moneyInc(key: "cash" | "bank") {
+  if (props.readonly) return
+  const raw = key === "cash" ? cashRaw.value : bankRaw.value
+  if (!raw.trim()) {
+    const nextInv = { ...inventory.value, [key]: (inventory.value[key] ?? 0) + 1 }
+    setInventory(nextInv)
+    if (key === "cash") cashRaw.value = String(nextInv.cash)
+    else bankRaw.value = String(nextInv.bank)
+    return
+  }
+  if (key === "cash") cashRaw.value = raw.trim().endsWith("+") ? raw : `${raw}+`
+  else bankRaw.value = raw.trim().endsWith("+") ? raw : `${raw}+`
+  commitMoney(key)
+}
+
+function moneyDec(key: "cash" | "bank") {
+  if (props.readonly) return
+  const raw = key === "cash" ? cashRaw.value : bankRaw.value
+  if (!raw.trim()) {
+    const nextInv = { ...inventory.value, [key]: Math.max(0, (inventory.value[key] ?? 0) - 1) }
+    setInventory(nextInv)
+    if (key === "cash") cashRaw.value = String(nextInv.cash)
+    else bankRaw.value = String(nextInv.bank)
+    return
+  }
+  if (key === "cash") cashRaw.value = raw.trim().endsWith("-") ? raw : `${raw}-`
+  else bankRaw.value = raw.trim().endsWith("-") ? raw : `${raw}-`
+  commitMoney(key)
 }
 
 function beginAdd(side: InventorySide) {
@@ -94,12 +173,25 @@ function beginEdit(side: InventorySide, item: V5InventoryItem) {
   showItemModal.value = true
 }
 
+function sortList(list: V5InventoryItem[]) {
+  list.sort((a, b) => {
+    const ca = (a.category ?? "").toLowerCase()
+    const cb = (b.category ?? "").toLowerCase()
+    if (ca < cb) return -1
+    if (ca > cb) return 1
+    const na = (a.name ?? "").toLowerCase()
+    const nb = (b.name ?? "").toLowerCase()
+    if (na < nb) return -1
+    if (na > nb) return 1
+    return 0
+  })
+}
+
 function saveItem() {
   if (props.readonly) return
   const n = name.value.trim()
   const d = description.value.trim()
   const a = Math.max(1, toNumberSafe(amount.value))
-
   if (!n || !d) return
 
   const nextInv: V5Inventory = {
@@ -109,7 +201,6 @@ function saveItem() {
   }
 
   const list = nextInv[editingSide.value]
-
   if (editingItemId.value) {
     const idx = list.findIndex((x) => x.id === editingItemId.value)
     if (idx !== -1) list[idx] = { ...list[idx], name: n, description: d, amount: a } as any
@@ -126,20 +217,6 @@ function saveItem() {
   sortList(list)
   setInventory(nextInv)
   showItemModal.value = false
-}
-
-function sortList(list: V5InventoryItem[]) {
-  list.sort((a, b) => {
-    const ca = (a.category ?? "").toLowerCase()
-    const cb = (b.category ?? "").toLowerCase()
-    if (ca < cb) return -1
-    if (ca > cb) return 1
-    const na = (a.name ?? "").toLowerCase()
-    const nb = (b.name ?? "").toLowerCase()
-    if (na < nb) return -1
-    if (na > nb) return 1
-    return 0
-  })
 }
 
 function removeItem(side: InventorySide, itemId: string) {
@@ -246,10 +323,6 @@ function confirmTransfer() {
   setInventory(nextInv)
   showTransferModal.value = false
 }
-
-const predefinedGroups = computed(() => {
-  return [] as any[]
-})
 </script>
 
 <template>
@@ -266,32 +339,56 @@ const predefinedGroups = computed(() => {
         <div class="moneyTop">
           <span class="moneyLabel">Bargeld</span>
           <div class="moneyActions">
+            <span class="moneyNow">Aktuell: <strong>{{ inventory.cash }}</strong></span>
+            <div v-if="!readonly" class="moneyStep">
+              <button type="button" class="moneyBtn" @click="moneyDec('cash')">−</button>
+              <button type="button" class="moneyBtn" @click="moneyInc('cash')">+</button>
+            </div>
             <VButton v-if="!readonly" variant="ghost" @click="openTransfer('cash')">→ Bank</VButton>
           </div>
         </div>
-        <VInput
-          label=""
-          type="number"
-          :min="0"
-          :model-value="inventory.cash"
-          @update:model-value="updateMoney('cash', $event)"
+
+        <input
+          class="moneyInput"
+          type="text"
+          inputmode="decimal"
+          autocomplete="off"
+          :disabled="readonly"
+          :value="cashRaw"
+          @input="cashRaw = ($event.target as HTMLInputElement).value"
+          @focus="onMoneyFocus('cash')"
+          @blur="commitMoney('cash')"
+          @keydown="onMoneyKeydown('cash', $event)"
         />
+        <div class="moneyHint">Rechnen geht: <code>+100</code>, <code>-50</code>, <code>200+25</code></div>
       </div>
 
       <div class="moneyBox">
         <div class="moneyTop">
           <span class="moneyLabel">Bank</span>
           <div class="moneyActions">
+            <span class="moneyNow">Aktuell: <strong>{{ inventory.bank }}</strong></span>
+            <div v-if="!readonly" class="moneyStep">
+              <button type="button" class="moneyBtn" @click="moneyDec('bank')">−</button>
+              <button type="button" class="moneyBtn" @click="moneyInc('bank')">+</button>
+            </div>
             <VButton v-if="!readonly" variant="ghost" @click="openTransfer('bank')">→ Bargeld</VButton>
           </div>
         </div>
-        <VInput
-          label=""
-          type="number"
-          :min="0"
-          :model-value="inventory.bank"
-          @update:model-value="updateMoney('bank', $event)"
+
+        <input
+          class="moneyInput"
+          type="text"
+          inputmode="decimal"
+          autocomplete="off"
+          :disabled="readonly"
+          :value="bankRaw"
+          @input="bankRaw = ($event.target as HTMLInputElement).value"
+          @focus="onMoneyFocus('bank')"
+          @blur="commitMoney('bank')"
+          @keydown="onMoneyKeydown('bank', $event)"
         />
+        <div class="moneyHint">Rechnen geht: <code>+100</code>, <code>-50</code>, <code>200+25</code></div>
       </div>
     </div>
 
@@ -302,9 +399,7 @@ const predefinedGroups = computed(() => {
           <VButton v-if="!readonly" variant="secondary" @click="beginAdd('carriedItems')">+ Item</VButton>
         </div>
 
-        <div v-if="inventory.carriedItems.length === 0" class="empty">
-          Keine Items.
-        </div>
+        <div v-if="inventory.carriedItems.length === 0" class="empty">Keine Items.</div>
 
         <div v-else class="list">
           <div v-for="it in inventory.carriedItems" :key="it.id" class="row">
@@ -340,9 +435,7 @@ const predefinedGroups = computed(() => {
           <VButton v-if="!readonly" variant="secondary" @click="beginAdd('ownedItems')">+ Item</VButton>
         </div>
 
-        <div v-if="inventory.ownedItems.length === 0" class="empty">
-          Keine Items.
-        </div>
+        <div v-if="inventory.ownedItems.length === 0" class="empty">Keine Items.</div>
 
         <div v-else class="list">
           <div v-for="it in inventory.ownedItems" :key="it.id" class="row">
@@ -371,10 +464,6 @@ const predefinedGroups = computed(() => {
           </div>
         </div>
       </div>
-    </div>
-
-    <div style="display:none">
-      {{ predefinedGroups }}
     </div>
   </VCard>
 
@@ -407,9 +496,7 @@ const predefinedGroups = computed(() => {
 
   <VModal v-model="showTransferModal" title="Überweisen" size="sm">
     <div class="modalBody">
-      <p class="hint">
-        {{ transferFrom === "bank" ? "Von Bank → Cash" : "Von Cash → Bank" }}
-      </p>
+      <p class="hint">{{ transferFrom === "bank" ? "Von Bank → Cash" : "Von Cash → Bank" }}</p>
 
       <VInput
         label="Betrag"
@@ -475,6 +562,7 @@ const predefinedGroups = computed(() => {
   justify-content: space-between;
   align-items: center;
   gap: $s-2;
+  flex-wrap: wrap;
 }
 
 .moneyLabel {
@@ -483,7 +571,67 @@ const predefinedGroups = computed(() => {
   color: $text-1;
 }
 
-.moneyActions { display: flex; gap: $s-2; }
+.moneyActions {
+  display: flex;
+  gap: $s-2;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.moneyNow {
+  font-size: .85rem;
+  color: $text-2;
+
+  strong { color: $text-0; font-family: $font-head; }
+}
+
+.moneyStep { display: flex; gap: $s-1; }
+
+.moneyBtn {
+  width: 34px;
+  height: 34px;
+  border-radius: 999px;
+  border: 1px solid rgba(255,255,255,.12);
+  background: rgba(255,255,255,.04);
+  color: $text-0;
+  cursor: pointer;
+  font-weight: 900;
+  display: grid;
+  place-items: center;
+  transition: transform $t-fast $ease, border-color $t-fast $ease;
+
+  &:hover {
+    transform: translateY(-1px);
+    border-color: rgba($red-0, .35);
+  }
+}
+
+.moneyInput {
+  padding: $s-2 $s-3;
+  border-radius: $r-sm;
+  border: 1px solid $border;
+  background: rgba(255,255,255,.02);
+  color: $text-0;
+  font-family: $font-body;
+  font-size: 1rem;
+
+  &:focus { outline: none; border-color: $red-0; }
+  &:disabled { opacity: .55; cursor: not-allowed; }
+}
+
+.moneyHint {
+  color: $text-2;
+  font-size: .82rem;
+
+  code {
+    padding: 1px 6px;
+    border-radius: $r-sm;
+    border: 1px solid rgba(255,255,255,.10);
+    background: rgba(255,255,255,.03);
+    color: $text-1;
+  }
+}
 
 .twoCols {
   margin-top: $s-4;

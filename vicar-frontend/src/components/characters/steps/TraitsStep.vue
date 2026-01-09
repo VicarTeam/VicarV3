@@ -64,28 +64,88 @@ const selectedPredatorType = computed(() => {
 const spendPointsBetweenActions = computed(() => {
   if (!selectedPredatorType.value) return []
 
-  return selectedPredatorType.value.actions
-    .filter(a => a.type === 'spend_background_points_between' || a.type === 'spend_flaw_points_between')
+  const actions = selectedPredatorType.value.actions
+
+  const betweenCoupons = actions
+    .filter(a => a.type === "spend_background_points_between" || a.type === "spend_flaw_points_between")
     .map(a => {
       const data = a.data as any
-      const allowedPackOldVicarIDs = data?.choices ?? []
-      const allowedPacks = getPacksForSpendBetweenRaw(allowedPackOldVicarIDs)
-      return {
-        action: a,
-        type: a.type === 'spend_background_points_between' ? 'backgrounds' as const : 'flaws' as const,
-        bonusPoints: data?.points ?? 0,
-        allowedPackOldVicarIDs,
-        allowedPackIds: allowedPacks.map(p => p.id),
-        allowedPacks,
+
+      const couponType = a.type === "spend_background_points_between"
+        ? ("backgrounds" as const)
+        : ("flaws" as const)
+
+      if (couponType === "backgrounds") {
+        const allowedPackOldVicarIDs = normalizeOldVicarChoiceIds(data?.choices)
+        const allowedPacks = getBackgroundCouponPacks(allowedPackOldVicarIDs)
+
+        return {
+          action: a,
+          type: couponType,
+          bonusPoints: data?.points ?? 0,
+          allowedPackOldVicarIDs,
+          allowedPackIds: allowedPacks.map(p => p.id),
+          allowedPacks
+        }
+      } else {
+        const allowedTypedChoices = normalizeOldVicarTypedChoices(data?.choices)
+        const allowedPacks = getFlawCouponPacksFromTypedChoices(allowedTypedChoices)
+
+        return {
+          action: a,
+          type: couponType,
+          bonusPoints: data?.points ?? 0,
+          allowedPackOldVicarIDs: allowedTypedChoices.map(c => c.id),
+          allowedPackIds: allowedPacks.map(p => p.id),
+          allowedPacks
+        }
       }
     })
+
+
+  const addBackgroundPointsCoupons = actions
+    .filter(a => a.type === "add_background_points")
+    .map(a => {
+      const data = a.data as any
+      const points = data?.amount ?? 0
+      const packOldVicarID = data?.backgroundId
+
+      const allowedPackOldVicarIDs = typeof packOldVicarID === "number" ? [packOldVicarID] : []
+      const allowedPacks = getBackgroundCouponPacks(allowedPackOldVicarIDs)
+
+      return {
+        action: a,
+        type: "backgrounds" as const,
+        bonusPoints: points,
+        allowedPackOldVicarIDs,
+        allowedPackIds: allowedPacks.map(p => p.id),
+        allowedPacks
+      }
+    })
+    .filter(c => c.bonusPoints > 0 && c.allowedPackIds.length > 0)
+
+  return [...betweenCoupons, ...addBackgroundPointsCoupons]
 })
 
-function getPacksForSpendBetweenRaw(allowedOldVicarIDs: number[]): V5TraitPack[] {
+function getBackgroundCouponPacks(allowedOldVicarIDs: number[]): V5TraitPack[] {
+  return v5data.traitPacks?.filter(p =>
+    p.type === "backgrounds" &&
+    p.oldVicarID !== undefined &&
+    allowedOldVicarIDs.includes(p.oldVicarID)
+  ) ?? []
+}
+
+function getFlawCouponPacksFromTypedChoices(choices: OldVicarTypedChoice[]): V5TraitPack[] {
+  if (!choices.length) return []
+
   return v5data.traitPacks?.filter(p => {
-    return p.oldVicarID !== undefined && allowedOldVicarIDs.includes(p.oldVicarID)
+    if (p.oldVicarID === undefined) return false
+    if (!packHasFlaws(p)) return false
+
+    return choices.some(c => c.id === p.oldVicarID && c.type === p.type)
   }) ?? []
 }
+
 
 const backgroundCouponPackIds = computed(() => {
   const ids: string[] = []
@@ -410,16 +470,19 @@ function isFlawCouponPack(packId: string): boolean {
 }
 
 const backgroundCouponPackNames = computed(() => {
-  return spendPointsBetweenActions.value
+  const names = spendPointsBetweenActions.value
     .filter(spa => spa.type === 'backgrounds')
     .flatMap(spa => spa.allowedPacks.map(p => p.name))
+  return [...new Set(names)]
 })
 
 const flawCouponPackNames = computed(() => {
-  return spendPointsBetweenActions.value
+  const names = spendPointsBetweenActions.value
     .filter(spa => spa.type === 'flaws')
     .flatMap(spa => spa.allowedPacks.map(p => p.name))
+  return [...new Set(names)]
 })
+
 
 function toggleMeritPack(packId: string) {
   if (expandedMeritPacks.value.has(packId)) {
@@ -626,6 +689,46 @@ function getTraitLevels(pack: V5TraitPack, traitId: string): number[] {
   }
 
   return [trait.level]
+}
+
+function normalizeOldVicarChoiceIds(raw: any): number[] {
+  if (!raw) return []
+  if (Array.isArray(raw)) {
+    if (raw.every(v => typeof v === "number")) return raw as number[]
+    return raw
+      .map(v => (typeof v === "object" && v && typeof v.id === "number" ? v.id : null))
+      .filter((v): v is number => typeof v === "number")
+  }
+  return []
+}
+
+type OldVicarTypedChoice = { type: 'backgrounds' | 'merits'; id: number }
+
+function normalizeOldVicarTypedChoices(raw: any): OldVicarTypedChoice[] {
+  if (!raw || !Array.isArray(raw)) return []
+
+  if (raw.every(v => typeof v === 'number')) {
+    return (raw as number[]).map(id => ({ type: 'backgrounds', id }))
+  }
+
+  return raw
+    .map(v => {
+      if (!v || typeof v !== 'object') return null
+      const id = typeof v.id === 'number' ? v.id : null
+
+      const type = (v.type === 'backgrounds' || v.type === 'merits')
+        ? (v.type as OldVicarTypedChoice['type'])
+        : null
+
+      if (!id || !type) return null
+      return { type, id }
+    })
+    .filter((v): v is OldVicarTypedChoice => !!v)
+}
+
+
+function packHasFlaws(pack: V5TraitPack): boolean {
+  return pack.packTraits?.some(pt => pt.trait.isFlaw) ?? false
 }
 </script>
 
