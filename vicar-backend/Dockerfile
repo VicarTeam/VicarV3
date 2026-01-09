@@ -20,6 +20,7 @@ FROM gcr.io/distroless/static-debian12:nonroot
 WORKDIR /app
 
 COPY --from=builder /out/app /app/app
+COPY --from=builder /src/assets /app/assets
 
 EXPOSE 3000
 
