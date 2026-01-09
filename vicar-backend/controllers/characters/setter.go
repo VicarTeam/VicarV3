@@ -249,6 +249,11 @@ func updateCharacter(c *fiber.Ctx) error {
 		changes["books"] = bookIDs
 	}
 
+	if dto.Inventory != nil {
+		character.Inventory = *dto.Inventory
+		changes["inventory"] = *dto.Inventory
+	}
+
 	if dto.InternalData != nil {
 		character.InternalData = *dto.InternalData
 		changes["internalData"] = *dto.InternalData
@@ -334,6 +339,54 @@ func updateCharacter(c *fiber.Ctx) error {
 		}
 
 		changes["disciplineSelections"] = dto.DisciplineSelections
+	}
+
+	if dto.TraitPackUsages != nil && len(dto.TraitPackUsages) > 0 {
+		if err := tx.Where("character_id = ?", character.ID).Delete(&entities.V5CharacterTraitPackUsage{}).Error; err != nil {
+			return err
+		}
+
+		for _, usage := range dto.TraitPackUsages {
+			newUsage := &entities.V5CharacterTraitPackUsage{
+				CharacterID: character.ID,
+				PackID:      usage.PackID,
+				Kind:        usage.Kind,
+			}
+
+			if err := tx.Create(newUsage).Error; err != nil {
+				return err
+			}
+
+			for _, trait := range usage.Traits {
+				newTrait := &entities.V5CharacterTrait{
+					UsageID:     newUsage.ID,
+					TraitID:     trait.TraitID,
+					CustomLevel: &trait.CustomLevel,
+					IsLocked:    trait.IsLocked,
+					IsManual:    trait.IsManual,
+					Suffix:      trait.Suffix,
+				}
+
+				if err := tx.Create(newTrait).Error; err != nil {
+					return err
+				}
+			}
+
+			for _, trait := range usage.FlawTraits {
+				newTrait := &entities.V5CharacterFlawTrait{
+					UsageID:     newUsage.ID,
+					TraitID:     trait.TraitID,
+					CustomLevel: &trait.CustomLevel,
+					IsLocked:    trait.IsLocked,
+					IsManual:    trait.IsManual,
+					Suffix:      trait.Suffix,
+				}
+
+				if err := tx.Create(newTrait).Error; err != nil {
+					return err
+				}
+			}
+		}
 	}
 
 	if err := tx.Commit().Error; err != nil {

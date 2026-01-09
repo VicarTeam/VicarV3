@@ -110,10 +110,30 @@ type UpdateCharacterDto struct {
 		} `json:"abilities"`
 	} `json:"disciplineSelections"`
 
+	TraitPackUsages []struct {
+		PackID uuid.UUID                         `json:"packID"`
+		Kind   entities.V5CharacterTraitPackKind `json:"kind"`
+		Traits []struct {
+			TraitID     uuid.UUID `json:"traitID"`
+			CustomLevel int       `json:"customLevel"`
+			IsLocked    bool      `json:"isLocked"`
+			IsManual    bool      `json:"isManual"`
+			Suffix      *string   `json:"suffix"`
+		} `json:"traits"`
+		FlawTraits []struct {
+			TraitID     uuid.UUID `json:"traitID"`
+			CustomLevel int       `json:"customLevel"`
+			IsLocked    bool      `json:"isLocked"`
+			IsManual    bool      `json:"isManual"`
+			Suffix      *string   `json:"suffix"`
+		} `json:"flawTraits"`
+	} `json:"traitPackUsages"`
+
 	Books []struct {
 		ID uuid.UUID `json:"id"`
 	} `json:"books"`
 
+	Inventory    *datatypes.JSON `json:"inventory"`
 	InternalData *datatypes.JSON `json:"internalData"`
 }
 

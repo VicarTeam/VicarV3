@@ -201,6 +201,7 @@ type V5Trait struct {
 	Requirement  datatypes.JSON     `gorm:"type:jsonb"`
 	Actions      datatypes.JSON     `gorm:"type:jsonb;not null"`
 	Restriction  *V5Restriction     `gorm:"embedded;embeddedPrefix:restriction_"`
+	IsFlaw       bool               `gorm:"type:boolean;not null;default:false"`
 	PackTraits   []V5TraitPackTrait `gorm:"foreignKey:TraitID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;"`
 }
 

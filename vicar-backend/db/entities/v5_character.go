@@ -46,7 +46,6 @@ const (
 	LevelChangeTrait          LevelChangeType = "trait"
 	LevelChangeFlaw           LevelChangeType = "flaw"
 	LevelChangeBloodPotency   LevelChangeType = "blood_potency"
-	LevelChangeBloodRitual    LevelChangeType = "blood_ritual"
 	LevelChangeSpecialization LevelChangeType = "specialization"
 	LevelChangeUnknown        LevelChangeType = "unknown"
 )
@@ -91,8 +90,7 @@ type V5Character struct {
 	Version                  int  `gorm:"type:int;not null;default:2"`
 
 	SkillSpreadType SkillSpreadType `gorm:"type:varchar(32);not null;default:'balanced'"`
-
-	InternalData datatypes.JSON `gorm:"type:jsonb;not null;default:'{}'"`
+	Inventory       datatypes.JSON  `gorm:"type:text;not null;default:'{}'"`
 
 	Books []V5Book `gorm:"many2many:v5_character_books;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;"`
 
@@ -107,6 +105,8 @@ type V5Character struct {
 	LevelHistory         []V5LevelChange                  `gorm:"foreignKey:CharacterID;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;"`
 
 	Viewers []User `gorm:"many2many:v5_character_viewers;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;"`
+
+	InternalData datatypes.JSON `gorm:"type:jsonb;not null;default:'{}'"`
 }
 
 type V5CharacterCategory struct {

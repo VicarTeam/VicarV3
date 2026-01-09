@@ -74,14 +74,16 @@ func (s *V5CharacterSerializer) Serialize(char entities.V5Character, args ...any
 		"version":                  char.Version,
 		"skillSpreadType":          char.SkillSpreadType,
 		"internalData":             char.InternalData,
+		"inventory":                char.Inventory,
 	}
 
 	if s.IsOwner {
-		m["userId"] = char.UserID
+		m["userID"] = char.UserID
+		m["isOwner"] = true
 	}
 
 	if char.DirectoryID != nil {
-		m["directoryId"] = char.DirectoryID
+		m["directoryID"] = char.DirectoryID
 	}
 
 	if char.ClanID != nil {
@@ -242,6 +244,7 @@ func serializeTraitPackUsages(usages []entities.V5CharacterTraitPackUsage) []fib
 		result[i] = fiber.Map{
 			"id":         usage.ID,
 			"kind":       usage.Kind,
+			"packID":     usage.PackID,
 			"pack":       serializeTraitPack(usage.Pack),
 			"traits":     serializeTraits(usage.Traits),
 			"flawTraits": serializeFlawTraits(usage.FlawTraits),
@@ -263,7 +266,8 @@ func serializeTraits(traits []entities.V5CharacterTrait) []fiber.Map {
 	for i, trait := range traits {
 		result[i] = fiber.Map{
 			"id":          trait.ID,
-			"traitId":     trait.TraitID,
+			"traitID":     trait.TraitID,
+			"usageID":     trait.UsageID,
 			"isLocked":    trait.IsLocked,
 			"isManual":    trait.IsManual,
 			"customLevel": trait.CustomLevel,
@@ -278,7 +282,7 @@ func serializeFlawTraits(traits []entities.V5CharacterFlawTrait) []fiber.Map {
 	for i, trait := range traits {
 		result[i] = fiber.Map{
 			"id":          trait.ID,
-			"traitId":     trait.TraitID,
+			"traitID":     trait.TraitID,
 			"isLocked":    trait.IsLocked,
 			"isManual":    trait.IsManual,
 			"customLevel": trait.CustomLevel,

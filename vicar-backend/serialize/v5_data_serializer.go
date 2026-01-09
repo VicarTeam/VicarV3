@@ -157,6 +157,7 @@ type V5TraitPackSerializer struct{}
 func (s *V5TraitPackSerializer) Serialize(pack entities.V5TraitPack, args ...any) any {
 	m := fiber.Map{
 		"id":           pack.ID,
+		"oldVicarID":   pack.OldVicarID,
 		"type":         pack.Type,
 		"name":         pack.Name,
 		"description":  pack.Description,
@@ -186,7 +187,7 @@ func (s *V5TraitPackSerializer) Serialize(pack entities.V5TraitPack, args ...any
 				"packID":  pack.ID,
 				"traitId": pt.TraitID,
 				"side":    pt.Side,
-				"trait":   traitSerializer.Serialize(pt.Trait),
+				"trait":   traitSerializer.Serialize(pt.Trait, pt),
 			}
 		}
 		m["packTraits"] = packTraits
@@ -198,8 +199,16 @@ func (s *V5TraitPackSerializer) Serialize(pack entities.V5TraitPack, args ...any
 type V5TraitSerializer struct{}
 
 func (s *V5TraitSerializer) Serialize(trait entities.V5Trait, args ...any) any {
+	isFlaw := false
+	if len(args) > 0 {
+		if packTrait, ok := args[0].(entities.V5TraitPackTrait); ok {
+			isFlaw = packTrait.Side == entities.TraitPackSideDisadvantage
+		}
+	}
+
 	m := fiber.Map{
 		"id":           trait.ID,
+		"oldVicarID":   trait.OldVicarID,
 		"level":        trait.Level,
 		"name":         trait.Name,
 		"description":  trait.Description,
@@ -208,6 +217,7 @@ func (s *V5TraitSerializer) Serialize(trait entities.V5Trait, args ...any) any {
 		"repeatSize":   trait.RepeatSize,
 		"requirement":  trait.Requirement,
 		"actions":      trait.Actions,
+		"isFlaw":       isFlaw,
 	}
 
 	if trait.Restriction != nil {
